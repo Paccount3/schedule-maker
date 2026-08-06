@@ -36,6 +36,17 @@ export default function App() {
     })
   }, [state.participants])
 
+  useEffect(() => {
+    if (state.participants.length === 0) {
+      setSelectedParticipantId('')
+      return
+    }
+    const stillValid = state.participants.some((p) => p.id === selectedParticipantId)
+    if (!stillValid) {
+      setSelectedParticipantId(state.participants[0].id)
+    }
+  }, [state.participants, selectedParticipantId])
+
   const validSelection =
     state.participants.find((p) => p.id === selectedParticipantId)?.id ??
     state.participants[0]?.id ??

@@ -159,7 +159,7 @@ export function WeekScheduler({
     const ro = new ResizeObserver(updateHeight)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [state.participants.length, participant?.id])
 
   const handleCellClick = (date: string, hourMinutes: number) => {
     if (!participant || isDragging) return
@@ -216,26 +216,8 @@ export function WeekScheduler({
     [dragPreview, applyShiftPreview],
   )
 
-  if (state.participants.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-700 bg-slate-900 p-12 text-center">
-        <p className="text-slate-400">
-          Add a participant using <strong className="text-slate-200">+ Add</strong> in the sidebar
-          to start scheduling.
-        </p>
-      </div>
-    )
-  }
-
-  if (!participant) {
-    return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-slate-700 bg-slate-900 p-12 text-center">
-        <p className="text-slate-400">Select a participant from the sidebar.</p>
-      </div>
-    )
-  }
-
   const gridBodyHeight = hours.length * hourHeight
+  const canAddShifts = !!participant
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -243,11 +225,22 @@ export function WeekScheduler({
         <div>
           <h2 className="text-base font-semibold text-slate-100">Week schedule</h2>
           <p className="text-xs text-slate-500">
-            Adding shifts for{' '}
-            <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
-            {participant.site ? ` · ${participant.site}` : ''}
+            {participant ? (
+              <>
+                Adding shifts for{' '}
+                <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
+                {participant.site ? ` · ${participant.site}` : ''}
+              </>
+            ) : state.participants.length === 0 ? (
+              <>
+                Add a participant using <strong className="text-slate-300">+ Add</strong> in the
+                sidebar to start scheduling.
+              </>
+            ) : (
+              'Select a participant from the sidebar to add shifts.'
+            )}
           </p>
-          {hoursSummary && (
+          {hoursSummary && participant && (
             <div className="mt-2 flex flex-wrap gap-2 text-sm">
               {!isCoachingOnlyParticipant(participant) && (
                 <span className="rounded-full bg-slate-800 px-3 py-1 tabular-nums text-slate-300">
@@ -314,7 +307,11 @@ export function WeekScheduler({
             {c.name} availability
           </span>
         ))}
-        <span>Click an empty slot to add a shift · drag top/bottom to resize · drag center to move</span>
+        <span>
+          {canAddShifts
+            ? 'Click an empty slot to add a shift · drag top/bottom to resize · drag center to move'
+            : 'Select a participant to add shifts · drag top/bottom to resize · drag center to move'}
+        </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-amber-950/75" />
           Coach / scheduling issue
@@ -378,7 +375,11 @@ export function WeekScheduler({
                   {hours.map((m) => (
                     <div
                       key={m}
-                      className="absolute w-full cursor-pointer border-b border-slate-800/30 hover:bg-blue-950/30"
+                      className={`absolute w-full border-b border-slate-800/30 ${
+                        canAddShifts
+                          ? 'cursor-pointer hover:bg-blue-950/30'
+                          : 'cursor-default'
+                      }`}
                       style={{
                         top: ((m - CALENDAR_VIEW_START) / 60) * hourHeight,
                         height: hourHeight,
@@ -391,7 +392,11 @@ export function WeekScheduler({
                     m + SLOT_MINUTES < CALENDAR_VIEW_END ? (
                       <div
                         key={`half-${m}`}
-                        className="absolute w-full cursor-pointer border-b border-dashed border-slate-800/20 hover:bg-blue-950/20"
+                        className={`absolute w-full border-b border-dashed border-slate-800/20 ${
+                          canAddShifts
+                            ? 'cursor-pointer hover:bg-blue-950/20'
+                            : 'cursor-default'
+                        }`}
                         style={{
                           top: ((m + SLOT_MINUTES - CALENDAR_VIEW_START) / 60) * hourHeight,
                           height: hourHeight / 2,
