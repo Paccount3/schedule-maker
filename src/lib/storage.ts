@@ -38,6 +38,8 @@ function createSampleData(): AppState {
       id: generateId(),
       name: 'Sam Chen',
       startingLocation: 'Downtown Center',
+      phone: '',
+      notes: '',
       color: pickCoachColor(0),
       availability: {
         monday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
@@ -51,6 +53,8 @@ function createSampleData(): AppState {
       id: generateId(),
       name: 'Taylor Brooks',
       startingLocation: 'North Campus',
+      phone: '',
+      notes: '',
       color: pickCoachColor(1),
       availability: defaultAvailability(),
     },
@@ -58,6 +62,8 @@ function createSampleData(): AppState {
       id: generateId(),
       name: 'Morgan Lee',
       startingLocation: 'Downtown Center',
+      phone: '',
+      notes: '',
       color: pickCoachColor(2),
       availability: {
         monday: { startMinutes: 7 * 60, endMinutes: 15 * 60 },
@@ -71,6 +77,8 @@ function createSampleData(): AppState {
       id: generateId(),
       name: 'Riley Patel',
       startingLocation: 'North Campus',
+      phone: '',
+      notes: '',
       color: pickCoachColor(3),
       availability: {
         monday: { startMinutes: 9 * 60, endMinutes: 17 * 60 },
@@ -84,6 +92,8 @@ function createSampleData(): AppState {
       id: generateId(),
       name: 'Casey Nguyen',
       startingLocation: 'East Side Hub',
+      phone: '',
+      notes: '',
       color: pickCoachColor(4),
       availability: {
         monday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
@@ -139,6 +149,8 @@ export function loadState(): AppState {
         coaches: parsed.coaches.map((c, i) => ({
           ...c,
           color: c.color || pickCoachColor(i),
+          phone: c.phone ?? '',
+          notes: c.notes ?? '',
         })),
       }
     }
@@ -172,6 +184,8 @@ export function createEmptyCoach(colorIndex = 0): Coach {
     id: generateId(),
     name: '',
     startingLocation: '',
+    phone: '',
+    notes: '',
     color: pickCoachColor(colorIndex),
     availability: defaultAvailability(),
   }

@@ -1,5 +1,6 @@
 import type { Coach, Participant, Shift } from '../types'
 import {
+  COACH_MAX_HOURS,
   getCoachHoursForWeek,
   getCoachMaxHoursForWeek,
 } from './scheduling'
@@ -131,8 +132,7 @@ function dayHasAvailableSlot(
 
   const slotWeekDates = getWeekDates(weekStartForDate(date))
   const assigned = getCoachHoursForWeek(coach.id, slotWeekDates, shifts)
-  const maxHours = getCoachMaxHoursForWeek(coach, slotWeekDates)
-  return assigned + durationMinutes / 60 <= maxHours
+  return assigned + durationMinutes / 60 <= COACH_MAX_HOURS
 }
 
 /** Days in the visible week where this coach has at least one bookable slot */
@@ -331,8 +331,7 @@ export function suggestShiftSlots(
     const weekHours =
       projectedByWeek.get(slotWeekStart) ??
       getCoachHoursForWeek(coach.id, slotWeekDates, shifts)
-    const maxHours = getCoachMaxHoursForWeek(coach, slotWeekDates)
-    if (weekHours + shiftDurationHours > maxHours) continue
+    if (weekHours + shiftDurationHours > COACH_MAX_HOURS) continue
 
     picked.push(slot)
     usedDates.add(slot.date)

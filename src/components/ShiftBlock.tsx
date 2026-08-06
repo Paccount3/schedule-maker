@@ -38,6 +38,7 @@ interface ShiftBlockProps {
   onDragPreview: (preview: ShiftDragPreview) => void
   onDragEnd: (preview: ShiftDragPreview) => void
   onDragCancel: () => void
+  onContextMenu?: (e: React.MouseEvent) => void
 }
 
 export function ShiftBlock({
@@ -60,6 +61,7 @@ export function ShiftBlock({
   onDragPreview,
   onDragEnd,
   onDragCancel,
+  onContextMenu,
 }: ShiftBlockProps) {
   const pointerRef = useRef<{
     mode: ShiftDragMode
@@ -180,6 +182,11 @@ export function ShiftBlock({
   return (
     <div
       title={errorSummary}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onContextMenu?.(e)
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(e) => finishPointer(e, true)}

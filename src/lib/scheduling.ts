@@ -124,11 +124,10 @@ export function getShiftConflicts(
 
     const shiftHours = durationHours(shift.startMinutes, shift.endMinutes)
     const weekHours = getCoachHoursForWeek(coach.id, weekDates, allShifts, shift.id)
-    const maxHours = getCoachMaxHoursForWeek(coach, weekDates)
-    if (weekHours + shiftHours > maxHours) {
+    if (weekHours + shiftHours > COACH_MAX_HOURS) {
       conflicts.push({
         type: 'coach_over_hours',
-        message: `${coach.name} would exceed ${maxHours}h/week (${weekHours + shiftHours}h total)`,
+        message: 'Coaches cannot exceed 40 hours',
       })
     }
   }
@@ -259,10 +258,10 @@ export function formatHoursValue(hours: number): string {
   return String(Math.round(hours * 10) / 10)
 }
 
-/** @deprecated use getCoachMaxHoursForWeek — coaches have variable weekly caps */
+/** Maximum coached hours a coach may be assigned in a calendar week */
 export const COACH_MAX_HOURS = 40
 
-export function getCoachMaxHoursForWeek(coach: Coach, weekDates: string[]): number {
+export function getCoachAvailabilityHoursForWeek(coach: Coach, weekDates: string[]): number {
   let total = 0
   for (const date of weekDates) {
     const dayKey = dayOfWeekFromDate(parseDateInput(date))
@@ -272,6 +271,81 @@ export function getCoachMaxHoursForWeek(coach: Coach, weekDates: string[]): numb
     }
   }
   return Math.round(total * 10) / 10
+}
+
+/** Weekly availability capacity (sum of daily windows) — used for sidebar display */
+export function getCoachMaxHoursForWeek(coach: Coach, weekDates: string[]): number {
+  return getCoachAvailabilityHoursForWeek(coach, weekDates)
+}
+
+export function coachHasWeeklyHoursIssue(
+  coach: Coach,
+  weekDates: string[],
+  shifts: Shift[],
+): boolean {
+  return getCoachHoursForWeek(coach.id, weekDates, shifts) > COACH_MAX_HOURS
+}
+
+export function getCoachSidebarIssueMessages(
+  coach: Coach,
+  weekDates: string[],
+  shifts: Shift[],
+  participants: Participant[],
+): string[] {
+  const messages: string[] = []
+  const seen = new Set<string>()
+
+  const add = (msg: string) => {
+    if (!seen.has(msg)) {
+      seen.add(msg)
+      messages.push(msg)
+    }
+  }
+
+  const summary = getCoachHoursSummary(coach, weekDates, shifts)
+  if (coachHasWeeklyHoursIssue(coach, weekDates, shifts)) {
+    add('Coaches cannot exceed 40 hours')
+  }
+  if (summary.max > 0 && summary.assigned > summary.max) {
+    add('Over weekly availability')
+  }
+
+  const participantMap = new Map(participants.map((p) => [p.id, p]))
+  const coachShifts = shifts.filter(
+    (s) =>
+      s.coachId === coach.id && s.type === 'coached' && weekDates.includes(s.date),
+  )
+
+  for (const shift of coachShifts) {
+    const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
+    const participant = participantMap.get(shift.participantId)
+    const conflicts = getShiftConflicts(
+      shift,
+      participant,
+      coach,
+      shifts,
+      dayKey,
+      weekDates,
+    )
+    for (const conflict of conflicts) {
+      switch (conflict.type) {
+        case 'coach_over_hours':
+          add('Coaches cannot exceed 40 hours')
+          break
+        case 'coach_double_booked':
+          add('Double booked')
+          break
+        case 'coach_unavailable':
+          add('Not available this day')
+          break
+        case 'outside_coach_hours':
+          add('Outside daily availability')
+          break
+      }
+    }
+  }
+
+  return messages
 }
 
 export function getCoachHoursForWeek(
@@ -353,9 +427,8 @@ export function getAvailableCoaches(
       return { coach, available: false, reason: 'Already booked' }
     }
     const weekHours = getCoachHoursForWeek(coach.id, weekDates, shifts, excludeShiftId)
-    const maxHours = getCoachMaxHoursForWeek(coach, weekDates)
-    if (weekHours + shiftHours > maxHours) {
-      return { coach, available: false, reason: `Would exceed ${maxHours}h/week` }
+    if (weekHours + shiftHours > COACH_MAX_HOURS) {
+      return { coach, available: false, reason: `Would exceed ${COACH_MAX_HOURS}h/week` }
     }
     return { coach, available: true }
   })

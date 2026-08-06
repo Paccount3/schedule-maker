@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
 import {
+  coachHasWeeklyHoursIssue,
   formatHoursValue,
   getCoachHoursSummary,
+  getCoachSidebarIssueMessages,
   getParticipantHoursForWeek,
   getParticipantHoursTotal,
   isCoachingOnlyParticipant,
@@ -60,31 +62,77 @@ function CoachRow({
   weekDates: string[]
   availabilityVisible: boolean
   shiftsVisible: boolean
-  onEdit: () => void
+  onEdit: (e: React.MouseEvent) => void
   onToggleAvailability: () => void
   onToggleShiftsVisibility: () => void
 }) {
   const { state } = useStore()
+  const [expanded, setExpanded] = useState(false)
   const summary = getCoachHoursSummary(coach, weekDates, state.shifts)
+  const hasHoursIssue = coachHasWeeklyHoursIssue(coach, weekDates, state.shifts)
+  const issueMessages = getCoachSidebarIssueMessages(
+    coach,
+    weekDates,
+    state.shifts,
+    state.participants,
+  )
+
+  const rowClass = hasHoursIssue
+    ? 'border-red-500/50 bg-red-950/30 hover:bg-red-950/40'
+    : 'border-transparent hover:bg-slate-800/60'
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-0.5 rounded-md px-1 py-1 hover:bg-slate-800/60">
-      <button
-        onClick={onEdit}
-        className="flex min-w-0 items-center gap-2 overflow-hidden rounded-md px-1 py-1.5 text-left"
-      >
-        <span
-          className="h-3 w-3 shrink-0 rounded-full ring-1 ring-slate-600"
-          style={{ backgroundColor: coach.color }}
-        />
-        <div className="min-w-0 overflow-hidden">
-          <div className="truncate text-sm font-medium text-slate-100">{coach.name || 'Unnamed'}</div>
-          <div className="truncate text-xs text-slate-500">
-            {coach.startingLocation || 'No location'}
+    <div
+      className={`group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-0.5 rounded-md border px-2 py-2 ${rowClass}`}
+    >
+      <div className="min-w-0 overflow-hidden text-left">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="h-3 w-3 shrink-0 rounded-full ring-1 ring-slate-600"
+            style={{ backgroundColor: coach.color }}
+          />
+          <div className="min-w-0 overflow-hidden">
+            <div className="truncate text-sm font-medium text-slate-100">
+              {coach.name || 'Unnamed'}
+            </div>
+            <div className="truncate text-[10px] leading-snug text-slate-500">
+              {coach.startingLocation || 'No location'}
+            </div>
           </div>
         </div>
-      </button>
-      <div className="flex shrink-0 items-center">
+        {expanded && (
+          <div className="mt-1.5 space-y-0.5 pl-5 text-[11px] leading-relaxed">
+            <div className="text-slate-400">
+              <span className="text-slate-500">Phone: </span>
+              <span className="text-slate-300">{coach.phone || '—'}</span>
+            </div>
+            <div className="text-slate-400">
+              <span className="text-slate-500">Notes: </span>
+              <span className="text-slate-300">{coach.notes || '—'}</span>
+            </div>
+            {issueMessages.length > 0 && (
+              <div className="space-y-0.5 pt-1">
+                {issueMessages.map((msg) => (
+                  <div key={msg} className="text-[10px] font-medium text-red-400/90">
+                    {msg}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="flex shrink-0 items-start">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded((v) => !v)
+          }}
+          title={expanded ? 'Hide details' : 'Show details'}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 transition-colors hover:bg-slate-700 hover:text-slate-300"
+        >
+          <ChevronIcon expanded={expanded} />
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation()
@@ -109,7 +157,14 @@ function CoachRow({
         >
           <ShiftIcon visible={availabilityVisible} />
         </button>
-        <div className="pl-0.5">
+        <button
+          onClick={onEdit}
+          title="Edit coach"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 opacity-0 transition-colors hover:bg-slate-700 hover:text-slate-300 group-hover:opacity-100"
+        >
+          ✎
+        </button>
+        <div className="flex h-7 items-center pl-0.5">
           <CoachHoursLabel assigned={summary.assigned} max={summary.max} />
         </div>
       </div>
@@ -320,7 +375,10 @@ export function Sidebar({
                   weekDates={weekDates}
                   availabilityVisible={visibleCoachIds.has(coach.id)}
                   shiftsVisible={visibleCoachShiftIds.has(coach.id)}
-                  onEdit={() => setEditingCoach(coach)}
+                  onEdit={(e) => {
+                    e.stopPropagation()
+                    setEditingCoach(coach)
+                  }}
                   onToggleAvailability={() => onToggleCoachVisibility(coach.id)}
                   onToggleShiftsVisibility={() => onToggleCoachShiftVisibility(coach.id)}
                 />

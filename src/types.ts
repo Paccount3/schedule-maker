@@ -57,10 +57,14 @@ export const PARTICIPANT_SERVICES: ParticipantService[] = [
 
 export const PARTICIPANT_NOTES_MAX = 30
 
+export const COACH_NOTES_MAX = 30
+
 export interface Coach {
   id: string
   name: string
   startingLocation: string
+  phone: string
+  notes: string
   color: string
   availability: Partial<Record<DayOfWeek, TimeRange | null>>
 }

@@ -172,6 +172,17 @@ export const CALENDAR_VIEW_START = 8 * 60
 export const CALENDAR_VIEW_END = 21 * 60
 export const SLOT_MINUTES = 30
 
+export function snapMinutesFromGridY(
+  yPx: number,
+  hourHeight: number,
+  step = SLOT_MINUTES,
+): number {
+  const rawMinutes = CALENDAR_VIEW_START + (yPx / hourHeight) * 60
+  const snapped = Math.round(rawMinutes / step) * step
+  const maxStart = CALENDAR_VIEW_END - step
+  return Math.max(CALENDAR_VIEW_START, Math.min(maxStart, snapped))
+}
+
 export function formatGridHour(minutes: number): string {
   return formatMinutes(minutes)
 }

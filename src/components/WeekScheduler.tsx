@@ -23,8 +23,11 @@ import {
   CALENDAR_VIEW_START,
   parseDateInput,
   SLOT_MINUTES,
+  snapMinutesFromGridY,
   todayDateInput,
 } from '../lib/time'
+import { clipboardShiftAt, shiftToClipboard } from '../lib/shiftClipboard'
+import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { ShiftEditor } from './ShiftEditor'
 import { ShiftBlock } from './ShiftBlock'
 import { ReportModeModal, defaultReportRange } from './ReportModeModal'
@@ -98,13 +101,27 @@ export function WeekScheduler({
   visibleCoachShiftIds,
   visibleParticipantIds,
 }: WeekSchedulerProps) {
-  const { state, prevWeek, nextWeek, goToToday, createQuickShift, updateShift, copyShiftsFromPreviousWeek } =
-    useStore()
+  const {
+    state,
+    prevWeek,
+    nextWeek,
+    goToToday,
+    createQuickShift,
+    updateShift,
+    addShift,
+    copyShiftsFromPreviousWeek,
+  } = useStore()
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
   const [isNewShift, setIsNewShift] = useState(false)
   const [dragPreview, setDragPreview] = useState<ShiftDragPreview | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+  const copiedShiftRef = useRef<ReturnType<typeof shiftToClipboard> | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    items: ContextMenuItem[]
+  } | null>(null)
   const gridContainerRef = useRef<HTMLDivElement>(null)
   const [hourHeight, setHourHeight] = useState(52)
 
@@ -160,6 +177,38 @@ export function WeekScheduler({
     ro.observe(el)
     return () => ro.disconnect()
   }, [state.participants.length, participant?.id])
+
+  const openContextMenu = useCallback(
+    (e: React.MouseEvent, items: ContextMenuItem[]) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setContextMenu({ x: e.clientX, y: e.clientY, items })
+    },
+    [],
+  )
+
+  const handleDayColumnContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>, date: string) => {
+      const data = copiedShiftRef.current
+      if (!data) return
+
+      const column = e.currentTarget
+      const y = e.clientY - column.getBoundingClientRect().top
+      const startMinutes = snapMinutesFromGridY(y, hourHeight)
+
+      openContextMenu(e, [
+        {
+          label: 'Paste',
+          onClick: () => {
+            const clip = copiedShiftRef.current
+            if (!clip) return
+            addShift(clipboardShiftAt(clip, date, startMinutes))
+          },
+        },
+      ])
+    },
+    [addShift, hourHeight, openContextMenu],
+  )
 
   const handleCellClick = (date: string, hourMinutes: number) => {
     if (!participant || isDragging) return
@@ -309,8 +358,8 @@ export function WeekScheduler({
         ))}
         <span>
           {canAddShifts
-            ? 'Click an empty slot to add a shift · drag top/bottom to resize · drag center to move'
-            : 'Select a participant to add shifts · drag top/bottom to resize · drag center to move'}
+            ? 'Click an empty slot to add a shift · drag top/bottom to resize · drag center to move · right-click to copy/paste'
+            : 'Select a participant to add shifts · drag to move/resize · right-click shifts to copy and paste on calendar'}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-amber-950/75" />
@@ -362,7 +411,11 @@ export function WeekScheduler({
                   {formatDayHeader(date)}
                 </div>
 
-                <div className="relative" style={{ height: gridBodyHeight }}>
+                <div
+                  className="relative"
+                  style={{ height: gridBodyHeight }}
+                  onContextMenu={(e) => handleDayColumnContextMenu(e, date)}
+                >
                   {visibleCoaches.map((coach) => (
                     <CoachAvailabilityOverlay
                       key={coach.id}
@@ -466,6 +519,16 @@ export function WeekScheduler({
                           setDragPreview(null)
                           setIsDragging(false)
                         }}
+                        onContextMenu={(e) =>
+                          openContextMenu(e, [
+                            {
+                              label: 'Copy',
+                              onClick: () => {
+                                copiedShiftRef.current = shiftToClipboard(original)
+                              },
+                            },
+                          ])
+                        }
                       />
                     )
                   })}
@@ -493,6 +556,15 @@ export function WeekScheduler({
           defaultStart={reportRange.start}
           defaultEnd={reportRange.end}
           onClose={() => setReportOpen(false)}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
         />
       )}
     </div>

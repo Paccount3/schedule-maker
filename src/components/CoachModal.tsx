@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Coach, DayOfWeek, TimeRange } from '../types'
-import { DAYS, DAY_LABELS } from '../types'
+import { COACH_NOTES_MAX, DAYS, DAY_LABELS } from '../types'
 import { useStore } from '../store/useStore'
 import { COACH_COLOR_PALETTE } from '../lib/colors'
 import { CALENDAR_VIEW_END, CALENDAR_VIEW_START, SLOT_MINUTES } from '../lib/time'
@@ -157,6 +157,32 @@ export function CoachModal({ coach: initialCoach, onClose }: CoachModalProps) {
             value={coach.startingLocation}
             onChange={(e) => setCoach({ ...coach, startingLocation: e.target.value })}
           />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Phone</span>
+          <input
+            className={`${inputClass} mt-1`}
+            placeholder="Phone number"
+            type="tel"
+            value={coach.phone}
+            onChange={(e) => setCoach({ ...coach, phone: e.target.value })}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Notes</span>
+          <textarea
+            className={`${inputClass} mt-1 resize-none`}
+            placeholder="Short notes"
+            rows={2}
+            maxLength={COACH_NOTES_MAX}
+            value={coach.notes}
+            onChange={(e) =>
+              setCoach({ ...coach, notes: e.target.value.slice(0, COACH_NOTES_MAX) })
+            }
+          />
+          <span className="mt-1 block text-right text-[10px] text-slate-600">
+            {coach.notes.length}/{COACH_NOTES_MAX}
+          </span>
         </label>
 
         <div>
