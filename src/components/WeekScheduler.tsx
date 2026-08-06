@@ -442,6 +442,7 @@ export function WeekScheduler({
                         top={top}
                         height={height}
                         participantName={p?.name || 'Participant'}
+                        site={p?.site}
                         accentColor={isCoached ? coach!.color : '#64748b'}
                         coachName={coach?.name}
                         isCoached={isCoached}

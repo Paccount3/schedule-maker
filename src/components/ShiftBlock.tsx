@@ -25,6 +25,7 @@ interface ShiftBlockProps {
   top: number
   height: number
   participantName: string
+  site?: string
   accentColor: string
   coachName?: string
   isCoached: boolean
@@ -46,6 +47,7 @@ export function ShiftBlock({
   top,
   height,
   participantName,
+  site,
   accentColor,
   coachName,
   isCoached,
@@ -74,6 +76,7 @@ export function ShiftBlock({
   const fontSize = shiftLabelFontSize(blockHeight)
   const subFontSize = Math.max(9, fontSize - 1)
   const errorFontSize = Math.max(9, fontSize - 2)
+  const siteFontSize = Math.max(8, subFontSize - 2)
 
   const errorClass =
     errorLevel === 'critical'
@@ -210,6 +213,14 @@ export function ShiftBlock({
         <div className="truncate opacity-80" style={{ fontSize: `${subFontSize}px` }}>
           {isCoached && coachName ? coachName : 'NO COACH'}
         </div>
+        {site && (
+          <div
+            className="truncate opacity-70"
+            style={{ fontSize: `${siteFontSize}px` }}
+          >
+            {site}
+          </div>
+        )}
         {errorLevel !== 'none' && errorSummary && (
           <div
             className="mt-0.5 truncate font-medium opacity-90"

@@ -188,8 +188,17 @@ function ParticipantRow({
         <div className="truncate text-sm font-medium text-slate-100">
           {participant.name || 'Unnamed'}
         </div>
+        {participant.site && (
+          <div className="truncate text-[10px] leading-snug text-slate-500">{participant.site}</div>
+        )}
         {expanded && (
           <div className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed">
+            {participant.site && (
+              <div className="text-slate-400">
+                <span className="text-slate-500">Site: </span>
+                <span className="text-slate-300">{participant.site}</span>
+              </div>
+            )}
             <div className="text-slate-400">
               <span className="text-slate-500">Service: </span>
               <span className="text-slate-300">{participant.service}</span>
@@ -287,57 +296,57 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="flex w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
-        <div className="flex-1 overflow-y-auto">
-          <div className="border-b border-slate-800 p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Coaches
-              </h2>
-              <button
-                onClick={() => setEditingCoach(addCoach())}
-                className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
-              >
-                + Add
-              </button>
-            </div>
-            <div className="space-y-0.5">
-              {state.coaches.length === 0 ? (
-                <p className="px-2 py-3 text-xs text-slate-600">No coaches yet</p>
-              ) : (
-                state.coaches.map((coach) => (
-                  <CoachRow
-                    key={coach.id}
-                    coach={coach}
-                    weekDates={weekDates}
-                    availabilityVisible={visibleCoachIds.has(coach.id)}
-                    shiftsVisible={visibleCoachShiftIds.has(coach.id)}
-                    onEdit={() => setEditingCoach(coach)}
-                    onToggleAvailability={() => onToggleCoachVisibility(coach.id)}
-                    onToggleShiftsVisibility={() => onToggleCoachShiftVisibility(coach.id)}
-                  />
-                ))
-              )}
-            </div>
+      <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
+        <div className="shrink-0 border-b border-slate-800 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Coaches
+            </h2>
+            <button
+              onClick={() => setEditingCoach(addCoach())}
+              className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
+            >
+              + Add
+            </button>
           </div>
+          <div className="space-y-0.5">
+            {state.coaches.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-slate-600">No coaches yet</p>
+            ) : (
+              state.coaches.map((coach) => (
+                <CoachRow
+                  key={coach.id}
+                  coach={coach}
+                  weekDates={weekDates}
+                  availabilityVisible={visibleCoachIds.has(coach.id)}
+                  shiftsVisible={visibleCoachShiftIds.has(coach.id)}
+                  onEdit={() => setEditingCoach(coach)}
+                  onToggleAvailability={() => onToggleCoachVisibility(coach.id)}
+                  onToggleShiftsVisibility={() => onToggleCoachShiftVisibility(coach.id)}
+                />
+              ))
+            )}
+          </div>
+        </div>
 
-          <div className="p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Participants
-              </h2>
-              <button
-                onClick={() => {
-                  const p = addParticipant()
-                  setIsNewParticipant(true)
-                  setEditingParticipant(p)
-                  onSelectParticipant(p.id)
-                }}
-                className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
-              >
-                + Add
-              </button>
-            </div>
+        <div className="flex min-h-0 flex-1 flex-col p-3">
+          <div className="mb-2 flex shrink-0 items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Participants
+            </h2>
+            <button
+              onClick={() => {
+                const p = addParticipant()
+                setIsNewParticipant(true)
+                setEditingParticipant(p)
+                onSelectParticipant(p.id)
+              }}
+              className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
+            >
+              + Add
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-0.5">
               {state.participants.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-slate-600">No participants yet</p>
