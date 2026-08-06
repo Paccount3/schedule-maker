@@ -1,0 +1,410 @@
+import type { Coach, Participant, Shift, TimeRange } from '../types'
+import type { DayOfWeek } from '../types'
+import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, toDateInput } from './time'
+
+export interface ShiftConflict {
+  type:
+    | 'coach_double_booked'
+    | 'outside_auth'
+    | 'coach_unavailable'
+    | 'outside_coach_hours'
+    | 'coach_over_hours'
+    | 'participant_daily_limit'
+    | 'over_working_hours'
+    | 'over_coaching_hours'
+  message: string
+}
+
+export type ShiftErrorLevel = 'none' | 'warning' | 'critical'
+
+const CRITICAL_CONFLICT_TYPES: ShiftConflict['type'][] = ['outside_auth']
+const WARNING_CONFLICT_TYPES: ShiftConflict['type'][] = [
+  'coach_unavailable',
+  'outside_coach_hours',
+  'coach_double_booked',
+  'coach_over_hours',
+  'participant_daily_limit',
+  'over_working_hours',
+  'over_coaching_hours',
+]
+
+export function getShiftErrorLevel(conflicts: ShiftConflict[]): ShiftErrorLevel {
+  if (conflicts.some((c) => CRITICAL_CONFLICT_TYPES.includes(c.type))) return 'critical'
+  if (conflicts.some((c) => WARNING_CONFLICT_TYPES.includes(c.type))) return 'warning'
+  return 'none'
+}
+
+export function formatShiftConflictSummary(conflicts: ShiftConflict[]): string | undefined {
+  if (conflicts.length === 0) return undefined
+  return conflicts.map((c) => c.message).join('\n')
+}
+
+export function participantHasShiftOnDate(
+  participantId: string,
+  date: string,
+  shifts: Shift[],
+  excludeShiftId?: string,
+): boolean {
+  return shifts.some(
+    (s) => s.participantId === participantId && s.date === date && s.id !== excludeShiftId,
+  )
+}
+
+export function getShiftConflicts(
+  shift: Shift,
+  participant: Participant | undefined,
+  coach: Coach | undefined,
+  allShifts: Shift[],
+  dayOfWeek: DayOfWeek,
+  weekDates: string[],
+): ShiftConflict[] {
+  const conflicts: ShiftConflict[] = []
+
+  if (participant) {
+    if (shift.date < participant.authStart || shift.date > participant.authEnd) {
+      conflicts.push({
+        type: 'outside_auth',
+        message: 'Shift is outside authorization date range',
+      })
+    }
+
+    if (participantHasShiftOnDate(participant.id, shift.date, allShifts, shift.id)) {
+      conflicts.push({
+        type: 'participant_daily_limit',
+        message: 'Participant can only have one shift per day',
+      })
+    }
+
+    const totalHours = getParticipantHoursTotal(participant.id, allShifts)
+    if (
+      !isCoachingOnlyParticipant(participant) &&
+      totalHours.totalWork > participant.workingHoursPerWeek
+    ) {
+      conflicts.push({
+        type: 'over_working_hours',
+        message: 'Out of Working Hours',
+      })
+    }
+    if (shift.type === 'coached' && totalHours.totalCoached > participant.coachingHoursPerWeek) {
+      conflicts.push({
+        type: 'over_coaching_hours',
+        message: 'Out of Coaching Hours',
+      })
+    }
+  }
+
+  if (shift.type === 'coached' && shift.coachId && coach) {
+    const avail = coach.availability[dayOfWeek]
+    if (!avail) {
+      conflicts.push({
+        type: 'coach_unavailable',
+        message: `${coach.name} is not available on this day`,
+      })
+    } else if (shift.startMinutes < avail.startMinutes || shift.endMinutes > avail.endMinutes) {
+      conflicts.push({
+        type: 'outside_coach_hours',
+        message: `${coach.name} is only available ${formatMinutesRange(avail.startMinutes, avail.endMinutes)} on this day`,
+      })
+    }
+
+    const overlapping = allShifts.filter(
+      (s) =>
+        s.id !== shift.id &&
+        s.coachId === shift.coachId &&
+        s.date === shift.date &&
+        s.startMinutes < shift.endMinutes &&
+        s.endMinutes > shift.startMinutes,
+    )
+    if (overlapping.length > 0) {
+      conflicts.push({
+        type: 'coach_double_booked',
+        message: `${coach.name} is already booked during this time`,
+      })
+    }
+
+    const shiftHours = durationHours(shift.startMinutes, shift.endMinutes)
+    const weekHours = getCoachHoursForWeek(coach.id, weekDates, allShifts, shift.id)
+    const maxHours = getCoachMaxHoursForWeek(coach, weekDates)
+    if (weekHours + shiftHours > maxHours) {
+      conflicts.push({
+        type: 'coach_over_hours',
+        message: `${coach.name} would exceed ${maxHours}h/week (${weekHours + shiftHours}h total)`,
+      })
+    }
+  }
+
+  return conflicts
+}
+
+export interface ParticipantHours {
+  soloScheduled: number
+  coachedScheduled: number
+  totalWorkScheduled: number
+  totalWorkRemaining: number
+  coachedRemaining: number
+}
+
+export function getParticipantHoursForWeek(
+  participant: Participant,
+  weekDates: string[],
+  shifts: Shift[],
+): ParticipantHours {
+  const participantShifts = shifts.filter(
+    (s) => s.participantId === participant.id && weekDates.includes(s.date),
+  )
+
+  let soloScheduled = 0
+  let coachedScheduled = 0
+
+  for (const shift of participantShifts) {
+    const hours = durationHours(shift.startMinutes, shift.endMinutes)
+    if (shift.type === 'coached') {
+      coachedScheduled += hours
+    } else {
+      soloScheduled += hours
+    }
+  }
+
+  const totalWorkScheduled = soloScheduled + coachedScheduled
+
+  return {
+    soloScheduled,
+    coachedScheduled,
+    totalWorkScheduled,
+    totalWorkRemaining: participant.workingHoursPerWeek - totalWorkScheduled,
+    coachedRemaining: participant.coachingHoursPerWeek - coachedScheduled,
+  }
+}
+
+export interface ParticipantHoursTotal {
+  totalWork: number
+  totalCoached: number
+}
+
+export function getParticipantHoursTotal(
+  participantId: string,
+  shifts: Shift[],
+): ParticipantHoursTotal {
+  let totalWork = 0
+  let totalCoached = 0
+
+  for (const shift of shifts.filter((s) => s.participantId === participantId)) {
+    const hours = durationHours(shift.startMinutes, shift.endMinutes)
+    totalWork += hours
+    if (shift.type === 'coached') totalCoached += hours
+  }
+
+  return { totalWork, totalCoached }
+}
+
+export function getParticipantHoursInRange(
+  participantId: string,
+  shifts: Shift[],
+  startDate: string,
+  endDate: string,
+): ParticipantHoursTotal {
+  let totalWork = 0
+  let totalCoached = 0
+
+  for (const shift of shifts) {
+    if (shift.participantId !== participantId) continue
+    if (shift.date < startDate || shift.date > endDate) continue
+    const hours = durationHours(shift.startMinutes, shift.endMinutes)
+    totalWork += hours
+    if (shift.type === 'coached') totalCoached += hours
+  }
+
+  return { totalWork, totalCoached }
+}
+
+export function getCoachHoursInRange(
+  coachId: string,
+  shifts: Shift[],
+  startDate: string,
+  endDate: string,
+): ParticipantHoursTotal {
+  let totalCoached = 0
+
+  for (const shift of shifts) {
+    if (shift.coachId !== coachId || shift.type !== 'coached') continue
+    if (shift.date < startDate || shift.date > endDate) continue
+    totalCoached += durationHours(shift.startMinutes, shift.endMinutes)
+  }
+
+  return { totalWork: totalCoached, totalCoached }
+}
+
+export function isCoachingOnlyParticipant(participant: Participant): boolean {
+  return participant.service === 'JC'
+}
+
+export function participantHasAuthIssue(participant: Participant, shifts: Shift[]): boolean {
+  return shifts.some(
+    (s) =>
+      s.participantId === participant.id &&
+      (s.date < participant.authStart || s.date > participant.authEnd),
+  )
+}
+
+export function participantHasHoursIssue(participant: Participant, shifts: Shift[]): boolean {
+  const totalHours = getParticipantHoursTotal(participant.id, shifts)
+  const workOver =
+    !isCoachingOnlyParticipant(participant) &&
+    totalHours.totalWork > participant.workingHoursPerWeek
+
+  return workOver || totalHours.totalCoached > participant.coachingHoursPerWeek
+}
+
+export function formatHoursValue(hours: number): string {
+  return String(Math.round(hours * 10) / 10)
+}
+
+/** @deprecated use getCoachMaxHoursForWeek — coaches have variable weekly caps */
+export const COACH_MAX_HOURS = 40
+
+export function getCoachMaxHoursForWeek(coach: Coach, weekDates: string[]): number {
+  let total = 0
+  for (const date of weekDates) {
+    const dayKey = dayOfWeekFromDate(parseDateInput(date))
+    const avail = coach.availability[dayKey]
+    if (avail) {
+      total += durationHours(avail.startMinutes, avail.endMinutes)
+    }
+  }
+  return Math.round(total * 10) / 10
+}
+
+export function getCoachHoursForWeek(
+  coachId: string,
+  weekDates: string[],
+  shifts: Shift[],
+  excludeShiftId?: string,
+): number {
+  return shifts
+    .filter(
+      (s) =>
+        s.id !== excludeShiftId &&
+        s.coachId === coachId &&
+        s.type === 'coached' &&
+        weekDates.includes(s.date),
+    )
+    .reduce((sum, s) => sum + durationHours(s.startMinutes, s.endMinutes), 0)
+}
+
+export interface CoachHoursSummary {
+  assigned: number
+  max: number
+  percentage: number
+  remaining: number
+}
+
+export function getCoachHoursSummary(
+  coach: Coach,
+  weekDates: string[],
+  shifts: Shift[],
+  excludeShiftId?: string,
+): CoachHoursSummary {
+  const assigned = getCoachHoursForWeek(coach.id, weekDates, shifts, excludeShiftId)
+  const max = getCoachMaxHoursForWeek(coach, weekDates)
+  const percentage = max > 0 ? Math.round((assigned / max) * 100) : 0
+  return {
+    assigned,
+    max,
+    percentage,
+    remaining: max - assigned,
+  }
+}
+
+export interface CoachSlot {
+  coach: Coach
+  available: boolean
+  reason?: string
+}
+
+export function getAvailableCoaches(
+  coaches: Coach[],
+  dayOfWeek: DayOfWeek,
+  startMinutes: number,
+  endMinutes: number,
+  date: string,
+  shifts: Shift[],
+  weekDates: string[],
+  excludeShiftId?: string,
+): CoachSlot[] {
+  const shiftHours = durationHours(startMinutes, endMinutes)
+
+  return coaches.map((coach) => {
+    const avail = coach.availability[dayOfWeek]
+    if (!avail) {
+      return { coach, available: false, reason: 'Not available this day' }
+    }
+    if (startMinutes < avail.startMinutes || endMinutes > avail.endMinutes) {
+      return { coach, available: false, reason: 'Outside daily availability' }
+    }
+    const conflict = shifts.some(
+      (s) =>
+        s.id !== excludeShiftId &&
+        s.coachId === coach.id &&
+        s.date === date &&
+        s.startMinutes < endMinutes &&
+        s.endMinutes > startMinutes,
+    )
+    if (conflict) {
+      return { coach, available: false, reason: 'Already booked' }
+    }
+    const weekHours = getCoachHoursForWeek(coach.id, weekDates, shifts, excludeShiftId)
+    const maxHours = getCoachMaxHoursForWeek(coach, weekDates)
+    if (weekHours + shiftHours > maxHours) {
+      return { coach, available: false, reason: `Would exceed ${maxHours}h/week` }
+    }
+    return { coach, available: true }
+  })
+}
+
+export function defaultAvailability(): Partial<Record<DayOfWeek, TimeRange | null>> {
+  return {
+    monday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
+    tuesday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
+    wednesday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
+    thursday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
+    friday: { startMinutes: 8 * 60, endMinutes: 20 * 60 },
+  }
+}
+
+export function buildCopiedShiftsFromPreviousWeek(
+  weekStart: string,
+  shifts: Shift[],
+  participants: Participant[],
+): Omit<Shift, 'id'>[] {
+  const currentWeek = getWeekDates(weekStart)
+  const prevWeekStart = toDateInput(addDays(parseDateInput(weekStart), -7))
+  const prevWeek = getWeekDates(prevWeekStart)
+  const dateMap = new Map(prevWeek.map((d, i) => [d, currentWeek[i]]))
+
+  const copied: Omit<Shift, 'id'>[] = []
+  const booked = [...shifts]
+
+  for (const shift of shifts) {
+    if (!prevWeek.includes(shift.date)) continue
+
+    const newDate = dateMap.get(shift.date)!
+    const participant = participants.find((p) => p.id === shift.participantId)
+    if (!participant) continue
+    if (newDate < participant.authStart || newDate > participant.authEnd) continue
+    if (participantHasShiftOnDate(shift.participantId, newDate, booked)) continue
+
+    const copy: Omit<Shift, 'id'> = {
+      participantId: shift.participantId,
+      date: newDate,
+      startMinutes: shift.startMinutes,
+      endMinutes: shift.endMinutes,
+      type: shift.type,
+      coachId: shift.coachId,
+      notes: shift.notes,
+    }
+    copied.push(copy)
+    booked.push({ ...copy, id: `copy-${copied.length}` })
+  }
+
+  return copied
+}
