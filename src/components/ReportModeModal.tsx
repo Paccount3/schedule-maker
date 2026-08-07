@@ -6,6 +6,12 @@ import {
   getParticipantHoursInRange,
   isCoachingOnlyParticipant,
 } from '../lib/scheduling'
+import {
+  filterCoachesByRegion,
+  filterParticipantsByRegion,
+  filterShiftsByRegion,
+  regionName,
+} from '../lib/regions'
 import { formatAuthRange, getWeekDates } from '../lib/time'
 import { DateSelect } from './DateSelect'
 import { Modal } from './Modal'
@@ -102,13 +108,26 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
 
   const rangeValid = startDate <= endDate
 
+  const regionParticipants = useMemo(
+    () => filterParticipantsByRegion(state.participants, state.selectedRegionId),
+    [state.participants, state.selectedRegionId],
+  )
+  const regionCoaches = useMemo(
+    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
+    [state.coaches, state.selectedRegionId],
+  )
+  const regionShifts = useMemo(
+    () => filterShiftsByRegion(state.shifts, state.participants, state.selectedRegionId),
+    [state.shifts, state.participants, state.selectedRegionId],
+  )
+
   const participantEntries = useMemo((): ReportEntry[] => {
     if (!rangeValid) return []
 
-    return state.participants.map((participant) => {
+    return regionParticipants.map((participant) => {
       const hours = getParticipantHoursInRange(
         participant.id,
-        state.shifts,
+        regionShifts,
         startDate,
         endDate,
       )
@@ -124,13 +143,13 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
         copyText: buildCopyText(name, hours.totalWork, hours.totalCoached, showWorked),
       }
     })
-  }, [state.participants, state.shifts, startDate, endDate, rangeValid])
+  }, [regionParticipants, regionShifts, startDate, endDate, rangeValid])
 
   const coachEntries = useMemo((): ReportEntry[] => {
     if (!rangeValid) return []
 
-    return state.coaches.map((coach) => {
-      const hours = getCoachHoursInRange(coach.id, state.shifts, startDate, endDate)
+    return regionCoaches.map((coach) => {
+      const hours = getCoachHoursInRange(coach.id, regionShifts, startDate, endDate)
       const name = coach.name || 'Unnamed'
 
       return {
@@ -142,15 +161,16 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
         copyText: buildCopyText(name, hours.totalWork, hours.totalCoached, true),
       }
     })
-  }, [state.coaches, state.shifts, startDate, endDate, rangeValid])
+  }, [regionCoaches, regionShifts, startDate, endDate, rangeValid])
 
   const rangeLabel = rangeValid ? formatAuthRange(startDate, endDate) : 'Invalid date range'
+  const regionLabel = regionName(state.regions, state.selectedRegionId)
 
   return (
     <Modal
       wide
       title="Report Mode"
-      subtitle={rangeLabel}
+      subtitle={`${regionLabel} · ${rangeLabel}`}
       footer={
         <div className="flex justify-end">
           <button

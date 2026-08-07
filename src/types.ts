@@ -8,13 +8,13 @@ export type DayOfWeek =
   | 'sunday'
 
 export const DAYS: DayOfWeek[] = [
+  'sunday',
   'monday',
   'tuesday',
   'wednesday',
   'thursday',
   'friday',
   'saturday',
-  'sunday',
 ]
 
 export const DAY_LABELS: Record<DayOfWeek, string> = {
@@ -32,8 +32,19 @@ export interface TimeRange {
   endMinutes: number
 }
 
+export interface Region {
+  id: string
+  name: string
+}
+
+export const DEFAULT_REGIONS: Region[] = [
+  { id: 'north-region', name: 'North Region' },
+  { id: 'west-region', name: 'West Region' },
+]
+
 export interface Participant {
   id: string
+  regionId: string
   name: string
   site: string
   service: ParticipantService
@@ -44,7 +55,15 @@ export interface Participant {
   notes: string
 }
 
-export type ParticipantService = 'WA' | 'CPO' | 'TWE' | 'JC' | 'LVL UP' | 'Other'
+export type ParticipantService =
+  | 'WA'
+  | 'CPO'
+  | 'TWE'
+  | 'JC'
+  | 'LVL UP'
+  | 'Module'
+  | 'Orientation'
+  | 'Other'
 
 export const PARTICIPANT_SERVICES: ParticipantService[] = [
   'WA',
@@ -52,6 +71,8 @@ export const PARTICIPANT_SERVICES: ParticipantService[] = [
   'TWE',
   'JC',
   'LVL UP',
+  'Module',
+  'Orientation',
   'Other',
 ]
 
@@ -61,6 +82,7 @@ export const COACH_NOTES_MAX = 30
 
 export interface Coach {
   id: string
+  regionId: string
   name: string
   startingLocation: string
   phone: string
@@ -83,6 +105,8 @@ export interface Shift {
 }
 
 export interface AppState {
+  regions: Region[]
+  selectedRegionId: string
   participants: Participant[]
   coaches: Coach[]
   shifts: Shift[]

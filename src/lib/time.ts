@@ -82,9 +82,7 @@ export function parseDateInput(value: string): Date {
 
 export function startOfWeek(date: Date): Date {
   const d = new Date(date)
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  d.setDate(d.getDate() + diff)
+  d.setDate(d.getDate() - d.getDay())
   d.setHours(0, 0, 0, 0)
   return d
 }
@@ -96,8 +94,23 @@ export function addDays(date: Date, days: number): Date {
 }
 
 export function dayOfWeekFromDate(date: Date): DayOfWeek {
-  const jsDay = date.getDay()
-  return DAYS[jsDay === 0 ? 6 : jsDay - 1]
+  return DAYS[date.getDay()]
+}
+
+/** Typical participant authorization length in days */
+export const DEFAULT_PARTICIPANT_AUTH_DAYS = 90
+
+export function addDaysToDateInput(dateStr: string, days: number): string {
+  return toDateInput(addDays(parseDateInput(dateStr), days))
+}
+
+export function defaultParticipantAuthRange(fromDate = new Date()): {
+  authStart: string
+  authEnd: string
+} {
+  const authStart = toDateInput(startOfWeek(fromDate))
+  const authEnd = addDaysToDateInput(authStart, DEFAULT_PARTICIPANT_AUTH_DAYS)
+  return { authStart, authEnd }
 }
 
 export function formatWeekLabel(weekStart: string): string {

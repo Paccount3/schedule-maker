@@ -4,13 +4,16 @@ import {
   formatHoursValue,
   getCoachHoursSummary,
   getCoachSidebarIssueMessages,
+  getParticipantFullyScheduledMessage,
   getParticipantHoursForWeek,
   getParticipantHoursTotal,
   isCoachingOnlyParticipant,
+  isParticipantFullyScheduled,
   participantHasAuthIssue,
   participantHasHoursIssue,
 } from '../lib/scheduling'
 import { formatAuthRange, getWeekDates } from '../lib/time'
+import { filterCoachesByRegion, filterParticipantsForWeekView } from '../lib/regions'
 import type { Coach, Participant } from '../types'
 import { CoachModal } from './CoachModal'
 import { ChevronIcon } from './ChevronIcon'
@@ -194,6 +197,8 @@ function ParticipantRow({
   const totalHours = getParticipantHoursTotal(participant.id, state.shifts)
   const hasAuthIssue = participantHasAuthIssue(participant, state.shifts)
   const hasHoursIssue = participantHasHoursIssue(participant, state.shifts)
+  const fullyScheduled = isParticipantFullyScheduled(participant, state.shifts)
+  const fullyScheduledMessage = getParticipantFullyScheduledMessage(participant)
   const coachingOnly = isCoachingOnlyParticipant(participant)
 
   const statLine = (label: string, value: number, suffix: 'worked' | 'coached') => (
@@ -230,9 +235,13 @@ function ParticipantRow({
       ? selected
         ? 'border-amber-500/70 bg-amber-950/45 ring-1 ring-amber-500/25'
         : 'border-amber-500/50 bg-amber-950/30 hover:bg-amber-950/40'
-      : selected
-        ? 'border-blue-500/50 bg-blue-950/40'
-        : 'border-transparent hover:bg-slate-800/60'
+      : fullyScheduled
+        ? selected
+          ? 'border-emerald-500/70 bg-emerald-950/45 ring-1 ring-emerald-500/25'
+          : 'border-emerald-500/50 bg-emerald-950/35 hover:bg-emerald-950/45'
+        : selected
+          ? 'border-blue-500/50 bg-blue-950/40'
+          : 'border-transparent hover:bg-slate-800/60'
 
   return (
     <div
@@ -244,6 +253,11 @@ function ParticipantRow({
         </div>
         {participant.site && (
           <div className="truncate text-[10px] leading-snug text-slate-500">{participant.site}</div>
+        )}
+        {fullyScheduled && (
+          <div className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-400">
+            {fullyScheduledMessage}
+          </div>
         )}
         {expanded && (
           <div className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed">
@@ -271,6 +285,9 @@ function ParticipantRow({
               totalHours.totalCoached,
               participant.coachingHoursPerWeek,
               'coached',
+            )}
+            {fullyScheduled && (
+              <div className="pt-1 font-medium text-emerald-400">{fullyScheduledMessage}</div>
             )}
             <div className={`pt-0.5 ${hasAuthIssue ? 'text-red-400' : 'text-slate-500'}`}>
               <span className={hasAuthIssue ? 'text-red-400/80' : 'text-slate-500'}>
@@ -341,16 +358,88 @@ export function Sidebar({
   visibleParticipantIds,
   onToggleParticipantVisibility,
 }: SidebarProps) {
-  const { state, addCoach, addParticipant } = useStore()
+  const { state, addCoach, addParticipant, setSelectedRegionId, addRegion } = useStore()
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null)
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null)
   const [isNewParticipant, setIsNewParticipant] = useState(false)
+  const [addingRegion, setAddingRegion] = useState(false)
+  const [newRegionName, setNewRegionName] = useState('')
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
+  const regionCoaches = useMemo(
+    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
+    [state.coaches, state.selectedRegionId],
+  )
+  const regionParticipants = useMemo(
+    () =>
+      filterParticipantsForWeekView(
+        state.participants,
+        state.selectedRegionId,
+        state.shifts,
+        state.weekStart,
+      ),
+    [state.participants, state.selectedRegionId, state.shifts, state.weekStart],
+  )
+
+  const submitNewRegion = () => {
+    const id = addRegion(newRegionName)
+    if (id) {
+      setSelectedRegionId(id)
+      setNewRegionName('')
+      setAddingRegion(false)
+    }
+  }
 
   return (
     <>
       <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
+        <div className="shrink-0 border-b border-slate-800 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Region
+            </h2>
+            <button
+              type="button"
+              onClick={() => setAddingRegion((v) => !v)}
+              className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
+            >
+              + Add
+            </button>
+          </div>
+          <select
+            value={state.selectedRegionId}
+            onChange={(e) => setSelectedRegionId(e.target.value)}
+            className="w-full rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {state.regions.map((region) => (
+              <option key={region.id} value={region.id}>
+                {region.name}
+              </option>
+            ))}
+          </select>
+          {addingRegion && (
+            <div className="mt-2 flex gap-1">
+              <input
+                type="text"
+                value={newRegionName}
+                onChange={(e) => setNewRegionName(e.target.value)}
+                placeholder="Region name"
+                className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitNewRegion()
+                }}
+              />
+              <button
+                type="button"
+                onClick={submitNewRegion}
+                className="shrink-0 rounded-md bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-500"
+              >
+                Save
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="shrink-0 border-b border-slate-800 p-3">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -364,10 +453,10 @@ export function Sidebar({
             </button>
           </div>
           <div className="space-y-0.5">
-            {state.coaches.length === 0 ? (
-              <p className="px-2 py-3 text-xs text-slate-600">No coaches yet</p>
+            {regionCoaches.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-slate-600">No coaches in this region</p>
             ) : (
-              state.coaches.map((coach) => (
+              regionCoaches.map((coach) => (
                 <CoachRow
                   key={coach.id}
                   coach={coach}
@@ -405,10 +494,12 @@ export function Sidebar({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-0.5">
-              {state.participants.length === 0 ? (
-                <p className="px-2 py-3 text-xs text-slate-600">No participants yet</p>
+              {regionParticipants.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-slate-600">
+                  No active participants for this week
+                </p>
               ) : (
-                state.participants.map((p) => (
+                regionParticipants.map((p) => (
                   <ParticipantRow
                     key={p.id}
                     participant={p}

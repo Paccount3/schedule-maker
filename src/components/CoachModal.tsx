@@ -95,7 +95,7 @@ interface CoachModalProps {
 }
 
 export function CoachModal({ coach: initialCoach, onClose }: CoachModalProps) {
-  const { updateCoach, removeCoach } = useStore()
+  const { state, updateCoach, removeCoach } = useStore()
   const [coach, setCoach] = useState(initialCoach)
 
   const save = () => {
@@ -140,6 +140,20 @@ export function CoachModal({ coach: initialCoach, onClose }: CoachModalProps) {
       }
     >
       <div className="space-y-4">
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Region</span>
+          <select
+            className={`${inputClass} mt-1`}
+            value={coach.regionId}
+            onChange={(e) => setCoach({ ...coach, regionId: e.target.value })}
+          >
+            {state.regions.map((region) => (
+              <option key={region.id} value={region.id}>
+                {region.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block">
           <span className="text-xs font-medium text-slate-400">Name</span>
           <input

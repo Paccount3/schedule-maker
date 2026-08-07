@@ -1,55 +1,119 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore'
+import { filterCoachesByRegion, filterParticipantsByRegion, filterParticipantsForWeekView } from './lib/regions'
+import { isParticipantFullyScheduled } from './lib/scheduling'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
+import { ConfettiCelebration } from './components/ConfettiCelebration'
 
 export default function App() {
   const { state } = useStore()
+
+  const regionAllParticipants = useMemo(
+    () => filterParticipantsByRegion(state.participants, state.selectedRegionId),
+    [state.participants, state.selectedRegionId],
+  )
+
+  const [celebration, setCelebration] = useState<{ key: number; name: string } | null>(null)
+  const scheduleStatusRef = useRef<Map<string, boolean>>(new Map())
+  const scheduleTrackingReadyRef = useRef(false)
+
+  useEffect(() => {
+    scheduleTrackingReadyRef.current = false
+    scheduleStatusRef.current.clear()
+  }, [state.selectedRegionId])
+
+  useEffect(() => {
+    if (!scheduleTrackingReadyRef.current) {
+      for (const p of regionAllParticipants) {
+        scheduleStatusRef.current.set(
+          p.id,
+          isParticipantFullyScheduled(p, state.shifts),
+        )
+      }
+      scheduleTrackingReadyRef.current = true
+      return
+    }
+
+    for (const p of regionAllParticipants) {
+      const nowFullyScheduled = isParticipantFullyScheduled(p, state.shifts)
+      const wasFullyScheduled = scheduleStatusRef.current.get(p.id) ?? false
+      if (nowFullyScheduled && !wasFullyScheduled) {
+        setCelebration({ key: Date.now(), name: p.name || 'Participant' })
+      }
+      scheduleStatusRef.current.set(p.id, nowFullyScheduled)
+    }
+  }, [regionAllParticipants, state.shifts])
+
+  const regionParticipants = useMemo(
+    () =>
+      filterParticipantsForWeekView(
+        state.participants,
+        state.selectedRegionId,
+        state.shifts,
+        state.weekStart,
+      ),
+    [state.participants, state.selectedRegionId, state.shifts, state.weekStart],
+  )
+  const regionCoaches = useMemo(
+    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
+    [state.coaches, state.selectedRegionId],
+  )
+
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>(
-    () => state.participants[0]?.id ?? '',
+    () => regionParticipants[0]?.id ?? '',
   )
   const [visibleCoachIds, setVisibleCoachIds] = useState<Set<string>>(() => new Set())
   const [visibleCoachShiftIds, setVisibleCoachShiftIds] = useState<Set<string>>(
-    () => new Set(state.coaches.map((c) => c.id)),
+    () => new Set(regionCoaches.map((c) => c.id)),
   )
   const [visibleParticipantIds, setVisibleParticipantIds] = useState<Set<string>>(
-    () => new Set(state.participants.map((p) => p.id)),
+    () => new Set(regionParticipants.map((p) => p.id)),
   )
 
   useEffect(() => {
     setVisibleCoachShiftIds((prev) => {
-      const next = new Set(prev)
-      for (const c of state.coaches) {
-        next.add(c.id)
+      const next = new Set<string>()
+      for (const c of regionCoaches) {
+        if (prev.has(c.id)) next.add(c.id)
+        else next.add(c.id)
       }
       return next
     })
-  }, [state.coaches])
+    setVisibleCoachIds((prev) => {
+      const next = new Set<string>()
+      for (const c of regionCoaches) {
+        if (prev.has(c.id)) next.add(c.id)
+      }
+      return next
+    })
+  }, [regionCoaches])
 
   useEffect(() => {
     setVisibleParticipantIds((prev) => {
-      const next = new Set(prev)
-      for (const p of state.participants) {
-        next.add(p.id)
+      const next = new Set<string>()
+      for (const p of regionParticipants) {
+        if (prev.has(p.id)) next.add(p.id)
+        else next.add(p.id)
       }
       return next
     })
-  }, [state.participants])
+  }, [regionParticipants])
 
   useEffect(() => {
-    if (state.participants.length === 0) {
+    if (regionParticipants.length === 0) {
       setSelectedParticipantId('')
       return
     }
-    const stillValid = state.participants.some((p) => p.id === selectedParticipantId)
+    const stillValid = regionParticipants.some((p) => p.id === selectedParticipantId)
     if (!stillValid) {
-      setSelectedParticipantId(state.participants[0].id)
+      setSelectedParticipantId(regionParticipants[0].id)
     }
-  }, [state.participants, selectedParticipantId])
+  }, [regionParticipants, selectedParticipantId])
 
   const validSelection =
-    state.participants.find((p) => p.id === selectedParticipantId)?.id ??
-    state.participants[0]?.id ??
+    regionParticipants.find((p) => p.id === selectedParticipantId)?.id ??
+    regionParticipants[0]?.id ??
     ''
 
   const toggleCoachVisibility = (coachId: string) => {
@@ -81,6 +145,17 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
+      {celebration && (
+        <>
+          <ConfettiCelebration
+            trigger={celebration.key}
+            onComplete={() => setCelebration(null)}
+          />
+          <div className="pointer-events-none fixed left-1/2 top-5 z-[210] -translate-x-1/2 animate-pulse rounded-full border border-emerald-500/40 bg-emerald-950/90 px-5 py-2.5 text-sm font-medium text-emerald-200 shadow-lg shadow-emerald-950/50">
+            {celebration.name} — all shifts scheduled!
+          </div>
+        </>
+      )}
       <header className="shrink-0 border-b border-slate-800 bg-slate-900 px-5 py-3">
         <h1 className="text-lg font-semibold tracking-tight">Schedule Maker</h1>
         <p className="text-xs text-slate-400">Plan shifts and match coach availability</p>

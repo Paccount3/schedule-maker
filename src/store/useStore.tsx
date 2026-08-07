@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { AppState, Coach, Participant, Shift } from '../types'
 import {
+  filterCoachesByRegion,
+  filterParticipantsByRegion,
+  filterShiftsByRegion,
+  regionIdFromName,
+} from '../lib/regions'
+import {
   createEmptyCoach,
   createEmptyParticipant,
   createShift,
@@ -12,6 +18,8 @@ import { addDays, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
 
 interface StoreContextValue {
   state: AppState
+  setSelectedRegionId: (regionId: string) => void
+  addRegion: (name: string) => string | null
   setWeekStart: (weekStart: string) => void
   prevWeek: () => void
   nextWeek: () => void
@@ -49,6 +57,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value: StoreContextValue = {
     state,
+    setSelectedRegionId: (regionId) =>
+      update((s) =>
+        s.regions.some((r) => r.id === regionId)
+          ? { ...s, selectedRegionId: regionId }
+          : s,
+      ),
+    addRegion: (name) => {
+      const trimmed = name.trim()
+      if (!trimmed) return null
+      const existingIds = new Set(state.regions.map((r) => r.id))
+      const id = regionIdFromName(trimmed, existingIds)
+      update((s) => ({
+        ...s,
+        regions: [...s.regions, { id, name: trimmed }],
+      }))
+      return id
+    },
     setWeekStart: (weekStart) => update((s) => ({ ...s, weekStart })),
     prevWeek: () =>
       update((s) => ({
@@ -63,7 +88,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     goToToday: () =>
       update((s) => ({ ...s, weekStart: toDateInput(startOfWeek(new Date())) })),
     addParticipant: () => {
-      const p = createEmptyParticipant()
+      const p = createEmptyParticipant(state.selectedRegionId)
       update((s) => ({ ...s, participants: [...s.participants, p] }))
       return p
     },
@@ -79,7 +104,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         shifts: s.shifts.filter((x) => x.participantId !== id),
       })),
     addCoach: () => {
-      const c = createEmptyCoach(state.coaches.length)
+      const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
+      const c = createEmptyCoach(regionCoaches.length, state.selectedRegionId)
       update((s) => ({ ...s, coaches: [...s.coaches, c] }))
       return c
     },
@@ -121,10 +147,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return shift
     },
     copyShiftsFromPreviousWeek: () => {
-      const copied = buildCopiedShiftsFromPreviousWeek(
-        state.weekStart,
+      const regionParticipants = filterParticipantsByRegion(
+        state.participants,
+        state.selectedRegionId,
+      )
+      const regionShifts = filterShiftsByRegion(
         state.shifts,
         state.participants,
+        state.selectedRegionId,
+      )
+      const copied = buildCopiedShiftsFromPreviousWeek(
+        state.weekStart,
+        regionShifts,
+        regionParticipants,
       )
       if (copied.length === 0) return 0
       const newShifts: Shift[] = copied.map((d) => ({ ...d, id: crypto.randomUUID() }))

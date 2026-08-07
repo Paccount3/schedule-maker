@@ -7,10 +7,17 @@ import {
   formatHoursValue,
   getParticipantHoursForWeek,
   getShiftConflicts,
-  getShiftErrorLevel,
+  getShiftDisplayErrorLevel,
+  getShiftMilestoneLabels,
+  hasMultiShiftDayNotice,
   isCoachingOnlyParticipant,
-  participantHasShiftOnDate,
+  splitShiftForPartialCoverage,
 } from '../lib/scheduling'
+import {
+  filterCoachesByRegion,
+  filterParticipantsForWeekView,
+  filterShiftsByRegion,
+} from '../lib/regions'
 import { layoutDayShifts } from '../lib/shiftLayout'
 import type { ShiftDragPreview } from '../lib/shiftDrag'
 import {
@@ -31,6 +38,8 @@ import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { ShiftEditor } from './ShiftEditor'
 import { ShiftBlock } from './ShiftBlock'
 import { ReportModeModal, defaultReportRange } from './ReportModeModal'
+import { ParticipantScheduleModal } from './ParticipantScheduleModal'
+import { CoachScheduleModal } from './CoachScheduleModal'
 
 const MIN_HOUR_HEIGHT = 40
 const GRID_HEADER_HEIGHT = 40
@@ -109,6 +118,8 @@ export function WeekScheduler({
     createQuickShift,
     updateShift,
     addShift,
+    addShifts,
+    removeShift,
     copyShiftsFromPreviousWeek,
   } = useStore()
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
@@ -116,6 +127,8 @@ export function WeekScheduler({
   const [dragPreview, setDragPreview] = useState<ShiftDragPreview | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
+  const [participantScheduleOpen, setParticipantScheduleOpen] = useState(false)
+  const [coachScheduleOpen, setCoachScheduleOpen] = useState(false)
   const copiedShiftRef = useRef<ReturnType<typeof shiftToClipboard> | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -132,35 +145,54 @@ export function WeekScheduler({
     [],
   )
 
-  const participant = state.participants.find((p) => p.id === selectedParticipantId)
+  const regionParticipants = useMemo(
+    () =>
+      filterParticipantsForWeekView(
+        state.participants,
+        state.selectedRegionId,
+        state.shifts,
+        state.weekStart,
+      ),
+    [state.participants, state.selectedRegionId, state.shifts, state.weekStart],
+  )
+  const regionCoaches = useMemo(
+    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
+    [state.coaches, state.selectedRegionId],
+  )
+  const regionShifts = useMemo(
+    () => filterShiftsByRegion(state.shifts, state.participants, state.selectedRegionId),
+    [state.shifts, state.participants, state.selectedRegionId],
+  )
+
+  const participant = regionParticipants.find((p) => p.id === selectedParticipantId)
   const participantMap = useMemo(
-    () => new Map(state.participants.map((p) => [p.id, p])),
-    [state.participants],
+    () => new Map(regionParticipants.map((p) => [p.id, p])),
+    [regionParticipants],
   )
 
   const visibleCoaches = useMemo(
-    () => state.coaches.filter((c) => visibleCoachIds.has(c.id)),
-    [state.coaches, visibleCoachIds],
+    () => regionCoaches.filter((c) => visibleCoachIds.has(c.id)),
+    [regionCoaches, visibleCoachIds],
   )
 
   const visibleShifts = useMemo(
     () =>
-      state.shifts.filter(
+      regionShifts.filter(
         (s) =>
           weekDates.includes(s.date) &&
           visibleParticipantIds.has(s.participantId) &&
           (s.type !== 'coached' || !s.coachId || visibleCoachShiftIds.has(s.coachId)),
       ),
-    [state.shifts, weekDates, visibleParticipantIds, visibleCoachShiftIds],
+    [regionShifts, weekDates, visibleParticipantIds, visibleCoachShiftIds],
   )
 
   const hoursSummary = participant
-    ? getParticipantHoursForWeek(participant, weekDates, state.shifts)
+    ? getParticipantHoursForWeek(participant, weekDates, regionShifts)
     : null
 
   const coachMap = useMemo(
-    () => new Map(state.coaches.map((c) => [c.id, c])),
-    [state.coaches],
+    () => new Map(regionCoaches.map((c) => [c.id, c])),
+    [regionCoaches],
   )
 
   useLayoutEffect(() => {
@@ -176,7 +208,7 @@ export function WeekScheduler({
     const ro = new ResizeObserver(updateHeight)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [state.participants.length, participant?.id])
+  }, [state.participants.length, participant?.id, state.selectedRegionId])
 
   const openContextMenu = useCallback(
     (e: React.MouseEvent, items: ContextMenuItem[]) => {
@@ -212,7 +244,6 @@ export function WeekScheduler({
 
   const handleCellClick = (date: string, hourMinutes: number) => {
     if (!participant || isDragging) return
-    if (participantHasShiftOnDate(participant.id, date, state.shifts)) return
 
     const startMinutes = hourMinutes
     const endMinutes = Math.min(hourMinutes + 2 * 60, CALENDAR_VIEW_END)
@@ -229,11 +260,7 @@ export function WeekScheduler({
       const p = participantMap.get(original.participantId)
 
       if (date !== original.date) {
-        if (
-          participantHasShiftOnDate(original.participantId, date, state.shifts, original.id)
-        ) {
-          date = original.date
-        } else if (p && (date < p.authStart || date > p.authEnd)) {
+        if (p && (date < p.authStart || date > p.authEnd)) {
           date = original.date
         }
       }
@@ -245,7 +272,7 @@ export function WeekScheduler({
         endMinutes: preview.endMinutes,
       }
     },
-    [participantMap, state.shifts],
+    [participantMap],
   )
 
   const handleDragEnd = useCallback(
@@ -270,8 +297,8 @@ export function WeekScheduler({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-4">
-        <div>
+      <div className="mb-4 grid shrink-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="min-w-0">
           <h2 className="text-base font-semibold text-slate-100">Week schedule</h2>
           <p className="text-xs text-slate-500">
             {participant ? (
@@ -303,7 +330,24 @@ export function WeekScheduler({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-self-center">
+          <button
+            type="button"
+            onClick={() => setParticipantScheduleOpen(true)}
+            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+          >
+            Create Participant Schedule
+          </button>
+          <button
+            type="button"
+            onClick={() => setCoachScheduleOpen(true)}
+            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+          >
+            Create Coach Schedule
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-self-end">
           <button
             onClick={() => copyShiftsFromPreviousWeek()}
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
@@ -470,7 +514,7 @@ export function WeekScheduler({
                     )
                     if (!blockLayout) return null
 
-                    const original = state.shifts.find((s) => s.id === shift.id)!
+                    const original = regionShifts.find((s) => s.id === shift.id)!
                     const { top, height } = blockLayout
                     const coach = shift.coachId ? coachMap.get(shift.coachId) : undefined
                     const isCoached = shift.type === 'coached' && !!coach
@@ -478,18 +522,23 @@ export function WeekScheduler({
                     const isSelected = shift.participantId === selectedParticipantId
                     const blockDragging = dragPreview?.shiftId === shift.id
                     const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
+                    const shiftsForEval = regionShifts.map((s) =>
+                      dragPreview?.shiftId === s.id ? { ...s, ...dragPreview } : s,
+                    )
                     const conflicts = getShiftConflicts(
                       shift,
                       p,
                       coach,
-                      state.shifts.map((s) =>
-                        dragPreview?.shiftId === s.id ? { ...s, ...dragPreview } : s,
-                      ),
+                      shiftsForEval,
                       dayKey,
                       weekDates,
                     )
-                    const errorLevel = getShiftErrorLevel(conflicts)
+                    const errorLevel = getShiftDisplayErrorLevel(conflicts)
+                    const multiShiftNotice = hasMultiShiftDayNotice(conflicts)
                     const errorSummary = formatShiftConflictSummary(conflicts)
+                    const milestoneLabels = p
+                      ? getShiftMilestoneLabels(p, shift.id, shiftsForEval)
+                      : []
 
                     return (
                       <ShiftBlock
@@ -507,6 +556,8 @@ export function WeekScheduler({
                         isSelected={isSelected}
                         isDragging={blockDragging}
                         errorLevel={errorLevel}
+                        multiShiftNotice={multiShiftNotice}
+                        milestoneLabels={milestoneLabels}
                         errorSummary={errorSummary}
                         onEdit={() => {
                           setIsNewShift(false)
@@ -519,16 +570,48 @@ export function WeekScheduler({
                           setDragPreview(null)
                           setIsDragging(false)
                         }}
-                        onContextMenu={(e) =>
+                        onContextMenu={(e) => {
+                          const canSplit = splitShiftForPartialCoverage(original) !== null
                           openContextMenu(e, [
+                            {
+                              label: 'Change to Coached Shift',
+                              disabled: original.type === 'coached',
+                              onClick: () => {
+                                setIsNewShift(false)
+                                setEditingShift({ ...original, type: 'coached' })
+                              },
+                            },
+                            {
+                              label: 'Change to Solo Shift',
+                              disabled: original.type === 'solo',
+                              onClick: () => {
+                                updateShift({ ...original, type: 'solo', coachId: undefined })
+                              },
+                            },
+                            {
+                              label: 'Split Shift for Partial Coverage',
+                              disabled: !canSplit,
+                              onClick: () => {
+                                const split = splitShiftForPartialCoverage(original)
+                                if (!split) return
+                                removeShift(original.id)
+                                addShifts(split)
+                              },
+                            },
                             {
                               label: 'Copy',
                               onClick: () => {
                                 copiedShiftRef.current = shiftToClipboard(original)
                               },
                             },
+                            {
+                              label: 'Delete Shift',
+                              onClick: () => {
+                                removeShift(original.id)
+                              },
+                            },
                           ])
-                        }
+                        }}
                       />
                     )
                   })}
@@ -556,6 +639,22 @@ export function WeekScheduler({
           defaultStart={reportRange.start}
           defaultEnd={reportRange.end}
           onClose={() => setReportOpen(false)}
+        />
+      )}
+
+      {participantScheduleOpen && (
+        <ParticipantScheduleModal
+          weekStart={state.weekStart}
+          weekDates={weekDates}
+          onClose={() => setParticipantScheduleOpen(false)}
+        />
+      )}
+
+      {coachScheduleOpen && (
+        <CoachScheduleModal
+          weekStart={state.weekStart}
+          weekDates={weekDates}
+          onClose={() => setCoachScheduleOpen(false)}
         />
       )}
 

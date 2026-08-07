@@ -1,34 +1,41 @@
 import type { AppState, Coach, Participant, Shift } from '../types'
+import { DEFAULT_REGIONS } from '../types'
 import { pickCoachColor } from './colors'
+import { getDefaultRegionId } from './regions'
 import { defaultAvailability } from './scheduling'
-import { generateId, startOfWeek, toDateInput } from './time'
+import { generateId, defaultParticipantAuthRange, parseDateInput, startOfWeek, toDateInput } from './time'
 
 const STORAGE_KEY = 'schedule-maker-state'
+const NORTH = DEFAULT_REGIONS[0].id
+const WEST = DEFAULT_REGIONS[1].id
 
 function createSampleData(): AppState {
   const weekStart = toDateInput(startOfWeek(new Date()))
+  const sampleAuth = defaultParticipantAuthRange(new Date())
 
   const participants: Participant[] = [
     {
       id: generateId(),
+      regionId: NORTH,
       name: 'Alex Rivera',
       site: 'Downtown Center',
       service: 'WA',
       workingHoursPerWeek: 40,
       coachingHoursPerWeek: 20,
-      authStart: '2026-01-01',
-      authEnd: '2026-12-31',
+      authStart: sampleAuth.authStart,
+      authEnd: sampleAuth.authEnd,
       notes: '',
     },
     {
       id: generateId(),
+      regionId: WEST,
       name: 'Jordan Kim',
       site: 'North Campus',
       service: 'WA',
       workingHoursPerWeek: 30,
       coachingHoursPerWeek: 15,
-      authStart: '2026-02-01',
-      authEnd: '2026-08-31',
+      authStart: sampleAuth.authStart,
+      authEnd: sampleAuth.authEnd,
       notes: '',
     },
   ]
@@ -36,6 +43,7 @@ function createSampleData(): AppState {
   const coaches: Coach[] = [
     {
       id: generateId(),
+      regionId: NORTH,
       name: 'Sam Chen',
       startingLocation: 'Downtown Center',
       phone: '',
@@ -51,6 +59,7 @@ function createSampleData(): AppState {
     },
     {
       id: generateId(),
+      regionId: WEST,
       name: 'Taylor Brooks',
       startingLocation: 'North Campus',
       phone: '',
@@ -60,6 +69,7 @@ function createSampleData(): AppState {
     },
     {
       id: generateId(),
+      regionId: NORTH,
       name: 'Morgan Lee',
       startingLocation: 'Downtown Center',
       phone: '',
@@ -75,6 +85,7 @@ function createSampleData(): AppState {
     },
     {
       id: generateId(),
+      regionId: WEST,
       name: 'Riley Patel',
       startingLocation: 'North Campus',
       phone: '',
@@ -90,6 +101,7 @@ function createSampleData(): AppState {
     },
     {
       id: generateId(),
+      regionId: WEST,
       name: 'Casey Nguyen',
       startingLocation: 'East Side Hub',
       phone: '',
@@ -131,7 +143,14 @@ function createSampleData(): AppState {
     },
   ]
 
-  return { participants, coaches, shifts, weekStart }
+  return {
+    regions: [...DEFAULT_REGIONS],
+    selectedRegionId: NORTH,
+    participants,
+    coaches,
+    shifts,
+    weekStart,
+  }
 }
 
 export function loadState(): AppState {
@@ -139,15 +158,33 @@ export function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as AppState
+      const regions =
+        parsed.regions?.length > 0 ? parsed.regions : [...DEFAULT_REGIONS]
+      const defaultRegionId = regions[0]?.id ?? getDefaultRegionId()
+      const defaultAuth = defaultParticipantAuthRange(new Date())
+      const weekStart = parsed.weekStart
+        ? toDateInput(startOfWeek(parseDateInput(parsed.weekStart)))
+        : toDateInput(startOfWeek(new Date()))
       return {
         ...parsed,
+        regions,
+        weekStart,
+        selectedRegionId:
+          parsed.selectedRegionId &&
+          regions.some((r) => r.id === parsed.selectedRegionId)
+            ? parsed.selectedRegionId
+            : defaultRegionId,
         participants: parsed.participants.map((p) => ({
           ...p,
+          regionId: p.regionId ?? defaultRegionId,
           service: p.service ?? 'WA',
           notes: p.notes ?? '',
+          authStart: p.authStart?.trim() || defaultAuth.authStart,
+          authEnd: p.authEnd?.trim() || defaultAuth.authEnd,
         })),
         coaches: parsed.coaches.map((c, i) => ({
           ...c,
+          regionId: c.regionId ?? defaultRegionId,
           color: c.color || pickCoachColor(i),
           phone: c.phone ?? '',
           notes: c.notes ?? '',
@@ -164,24 +201,26 @@ export function saveState(state: AppState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 
-export function createEmptyParticipant(): Participant {
-  const weekStart = toDateInput(startOfWeek(new Date()))
+export function createEmptyParticipant(regionId: string): Participant {
+  const { authStart, authEnd } = defaultParticipantAuthRange(new Date())
   return {
     id: generateId(),
+    regionId,
     name: '',
     site: '',
     service: 'WA',
     workingHoursPerWeek: 40,
     coachingHoursPerWeek: 20,
-    authStart: weekStart,
-    authEnd: `${new Date().getFullYear()}-12-31`,
+    authStart,
+    authEnd,
     notes: '',
   }
 }
 
-export function createEmptyCoach(colorIndex = 0): Coach {
+export function createEmptyCoach(colorIndex = 0, regionId: string): Coach {
   return {
     id: generateId(),
+    regionId,
     name: '',
     startingLocation: '',
     phone: '',

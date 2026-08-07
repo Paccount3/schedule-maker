@@ -3,6 +3,7 @@ import type { Participant, ParticipantService } from '../types'
 import { PARTICIPANT_NOTES_MAX, PARTICIPANT_SERVICES } from '../types'
 import { useStore } from '../store/useStore'
 import { hexToRgba } from '../lib/colors'
+import { filterCoachesByRegion } from '../lib/regions'
 import {
   getCoachHoursSummary,
   isCoachingOnlyParticipant,
@@ -43,22 +44,32 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   const [shiftCount, setShiftCount] = useState(
     isNew ? 4 : Math.max(1, Math.ceil(initial.coachingHoursPerWeek / 3)),
   )
-  const [selectedCoachId, setSelectedCoachId] = useState<string>(
-    () => state.coaches[0]?.id ?? '',
-  )
+  const [selectedCoachId, setSelectedCoachId] = useState<string>(() => {
+    const coaches = filterCoachesByRegion(state.coaches, initial.regionId)
+    return coaches[0]?.id ?? ''
+  })
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set())
   const [planShifts, setPlanShifts] = useState(isNew ?? false)
   const [preferredPeriod, setPreferredPeriod] = useState<PreferredShiftPeriod>('morning')
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; site?: string }>({})
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string
+    site?: string
+    authStart?: string
+    authEnd?: string
+  }>({})
 
   const coachingOnly = isCoachingOnlyParticipant(participant)
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
+  const regionCoaches = useMemo(
+    () => filterCoachesByRegion(state.coaches, participant.regionId),
+    [state.coaches, participant.regionId],
+  )
 
   const coachRankings = useMemo(
     () =>
       rankCoachesForParticipant(
-        state.coaches,
+        regionCoaches,
         participant,
         state.weekStart,
         weekDates,
@@ -67,10 +78,10 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
         shiftCount,
         preferredPeriod,
       ),
-    [state.coaches, participant, state.weekStart, weekDates, state.shifts, shiftDurationHours, shiftCount, preferredPeriod],
+    [regionCoaches, participant, state.weekStart, weekDates, state.shifts, shiftDurationHours, shiftCount, preferredPeriod],
   )
 
-  const selectedCoach = state.coaches.find((c) => c.id === selectedCoachId)
+  const selectedCoach = regionCoaches.find((c) => c.id === selectedCoachId)
 
   const suggestedSlots = useMemo(() => {
     if (!selectedCoach || !planShifts) return []
@@ -112,9 +123,23 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   const plannedHours = selectedSlots.length * shiftDurationHours
 
   const save = () => {
-    const errors: { name?: string; site?: string } = {}
+    const errors: {
+      name?: string
+      site?: string
+      authStart?: string
+      authEnd?: string
+    } = {}
     if (!participant.name.trim()) errors.name = 'Name is required'
     if (!participant.site.trim()) errors.site = 'Work site is required'
+    if (!participant.authStart?.trim()) errors.authStart = 'Authorization start is required'
+    if (!participant.authEnd?.trim()) errors.authEnd = 'Authorization end is required'
+    if (
+      participant.authStart?.trim() &&
+      participant.authEnd?.trim() &&
+      participant.authEnd < participant.authStart
+    ) {
+      errors.authEnd = 'End date must be on or after the start date'
+    }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
       return
@@ -259,6 +284,20 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
               <span className="mt-1 block text-xs text-red-400">{fieldErrors.name}</span>
             )}
           </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-400">Region</span>
+            <select
+              className={`${inputClass} mt-1`}
+              value={participant.regionId}
+              onChange={(e) => setParticipant({ ...participant, regionId: e.target.value })}
+            >
+              {state.regions.map((region) => (
+                <option key={region.id} value={region.id}>
+                  {region.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="block">
             <span className="text-xs font-medium text-slate-400">Service</span>
             <select
@@ -327,20 +366,39 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
             )}
           </label>
           <label className="block">
-            <span className="text-xs font-medium text-slate-400">Authorization Start</span>
+            <span className="text-xs font-medium text-slate-400">
+              Authorization Start <span className="text-red-400">*</span>
+            </span>
             <DateSelect
-              className="mt-1"
+              className={`mt-1 ${fieldErrors.authStart ? '[&>button]:border-red-500' : ''}`}
               value={participant.authStart}
-              onChange={(authStart) => setParticipant({ ...participant, authStart })}
+              onChange={(authStart) => {
+                setParticipant({ ...participant, authStart })
+                setFieldErrors((e) => ({ ...e, authStart: undefined, authEnd: undefined }))
+              }}
             />
+            {fieldErrors.authStart && (
+              <span className="mt-1 block text-xs text-red-400">{fieldErrors.authStart}</span>
+            )}
           </label>
           <label className="block">
-            <span className="text-xs font-medium text-slate-400">Authorization End</span>
+            <span className="text-xs font-medium text-slate-400">
+              Authorization End <span className="text-red-400">*</span>
+            </span>
             <DateSelect
-              className="mt-1"
+              className={`mt-1 ${fieldErrors.authEnd ? '[&>button]:border-red-500' : ''}`}
               value={participant.authEnd}
-              onChange={(authEnd) => setParticipant({ ...participant, authEnd })}
+              onChange={(authEnd) => {
+                setParticipant({ ...participant, authEnd })
+                setFieldErrors((e) => ({ ...e, authEnd: undefined }))
+              }}
             />
+            {fieldErrors.authEnd && (
+              <span className="mt-1 block text-xs text-red-400">{fieldErrors.authEnd}</span>
+            )}
+            <span className="mt-1 block text-[10px] text-slate-500">
+              Default authorization period is 90 days.
+            </span>
           </label>
         </div>
 
@@ -410,8 +468,8 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
                   </div>
                 </div>
 
-                {state.coaches.length === 0 ? (
-                  <p className="text-sm text-amber-400">Add a coach first to assign shifts.</p>
+                {regionCoaches.length === 0 ? (
+                  <p className="text-sm text-amber-400">Add a coach in this region to assign shifts.</p>
                 ) : (
                   <>
                     <div>

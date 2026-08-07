@@ -14,7 +14,7 @@ import {
   type ShiftDragPreview,
 } from '../lib/shiftDrag'
 
-import type { ShiftErrorLevel } from '../lib/scheduling'
+import { MULTI_SHIFT_DAY_MESSAGE, type ShiftErrorLevel } from '../lib/scheduling'
 
 const DRAG_THRESHOLD_PX = 4
 
@@ -32,6 +32,8 @@ interface ShiftBlockProps {
   isSelected: boolean
   isDragging: boolean
   errorLevel?: ShiftErrorLevel
+  multiShiftNotice?: boolean
+  milestoneLabels?: string[]
   errorSummary?: string
   onEdit: () => void
   onDragStart: () => void
@@ -55,6 +57,8 @@ export function ShiftBlock({
   isSelected,
   isDragging,
   errorLevel = 'none',
+  multiShiftNotice = false,
+  milestoneLabels = [],
   errorSummary,
   onEdit,
   onDragStart,
@@ -79,6 +83,8 @@ export function ShiftBlock({
   const subFontSize = Math.max(9, fontSize - 1)
   const errorFontSize = Math.max(9, fontSize - 2)
   const siteFontSize = Math.max(8, subFontSize - 2)
+
+  const detailFontSize = Math.max(8, errorFontSize - 1)
 
   const errorClass =
     errorLevel === 'critical'
@@ -228,12 +234,32 @@ export function ShiftBlock({
             {site}
           </div>
         )}
+        {milestoneLabels.map((label) => (
+          <div
+            key={label}
+            className="truncate text-sky-300/90"
+            style={{ fontSize: `${detailFontSize}px` }}
+          >
+            {label}
+          </div>
+        ))}
         {errorLevel !== 'none' && errorSummary && (
           <div
             className="mt-0.5 truncate font-medium opacity-90"
             style={{ fontSize: `${errorFontSize}px` }}
           >
-            {errorSummary.split('\n')[0]}
+            {errorSummary
+              .split('\n')
+              .filter((line) => line !== MULTI_SHIFT_DAY_MESSAGE)[0]}
+          </div>
+        )}
+        {multiShiftNotice && (
+          <div
+            className="mt-0.5 flex items-start gap-1 text-slate-400/90"
+            style={{ fontSize: `${errorFontSize}px` }}
+          >
+            <span className="shrink-0 font-bold leading-none text-slate-500">!</span>
+            <span className="min-w-0 leading-tight">{MULTI_SHIFT_DAY_MESSAGE}</span>
           </div>
         )}
       </div>

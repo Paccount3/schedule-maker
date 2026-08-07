@@ -1,6 +1,6 @@
 import type { Coach, Participant, Shift, TimeRange } from '../types'
 import type { DayOfWeek } from '../types'
-import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, toDateInput } from './time'
+import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, SLOT_MINUTES, toDateInput } from './time'
 
 export interface ShiftConflict {
   type:
@@ -15,7 +15,7 @@ export interface ShiftConflict {
   message: string
 }
 
-export type ShiftErrorLevel = 'none' | 'warning' | 'critical'
+export type ShiftErrorLevel = 'none' | 'info' | 'warning' | 'critical'
 
 const CRITICAL_CONFLICT_TYPES: ShiftConflict['type'][] = ['outside_auth']
 const WARNING_CONFLICT_TYPES: ShiftConflict['type'][] = [
@@ -23,14 +23,27 @@ const WARNING_CONFLICT_TYPES: ShiftConflict['type'][] = [
   'outside_coach_hours',
   'coach_double_booked',
   'coach_over_hours',
-  'participant_daily_limit',
   'over_working_hours',
   'over_coaching_hours',
 ]
+const INFO_CONFLICT_TYPES: ShiftConflict['type'][] = ['participant_daily_limit']
+
+export const MULTI_SHIFT_DAY_MESSAGE = 'Participant has more than 1 shift scheduled this day'
+
+export function hasMultiShiftDayNotice(conflicts: ShiftConflict[]): boolean {
+  return conflicts.some((c) => c.type === 'participant_daily_limit')
+}
+
+/** Error level for shift block colors — ignores low-severity multi-shift notices */
+export function getShiftDisplayErrorLevel(conflicts: ShiftConflict[]): ShiftErrorLevel {
+  const forDisplay = conflicts.filter((c) => c.type !== 'participant_daily_limit')
+  return getShiftErrorLevel(forDisplay)
+}
 
 export function getShiftErrorLevel(conflicts: ShiftConflict[]): ShiftErrorLevel {
   if (conflicts.some((c) => CRITICAL_CONFLICT_TYPES.includes(c.type))) return 'critical'
   if (conflicts.some((c) => WARNING_CONFLICT_TYPES.includes(c.type))) return 'warning'
+  if (conflicts.some((c) => INFO_CONFLICT_TYPES.includes(c.type))) return 'info'
   return 'none'
 }
 
@@ -71,7 +84,7 @@ export function getShiftConflicts(
     if (participantHasShiftOnDate(participant.id, shift.date, allShifts, shift.id)) {
       conflicts.push({
         type: 'participant_daily_limit',
-        message: 'Participant can only have one shift per day',
+        message: MULTI_SHIFT_DAY_MESSAGE,
       })
     }
 
@@ -237,6 +250,80 @@ export function isCoachingOnlyParticipant(participant: Participant): boolean {
   return participant.service === 'JC'
 }
 
+/** Weeks ahead of the viewed week to show participants whose authorization has not started yet */
+export const PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS = 2
+
+export function isParticipantHoursComplete(
+  participant: Participant,
+  totals: ParticipantHoursTotal,
+): boolean {
+  const coachingDone =
+    participant.coachingHoursPerWeek <= 0 ||
+    totals.totalCoached >= participant.coachingHoursPerWeek
+  if (isCoachingOnlyParticipant(participant)) return coachingDone
+  const workDone =
+    participant.workingHoursPerWeek <= 0 ||
+    totals.totalWork >= participant.workingHoursPerWeek
+  return workDone && coachingDone
+}
+
+export const PARTICIPANT_FULLY_SCHEDULED_MESSAGE =
+  'All working and coaching hours are scheduled.'
+
+export const PARTICIPANT_FULLY_SCHEDULED_COACHING_ONLY_MESSAGE =
+  'All coaching hours are scheduled.'
+
+export function getParticipantFullyScheduledMessage(participant: Participant): string {
+  return isCoachingOnlyParticipant(participant)
+    ? PARTICIPANT_FULLY_SCHEDULED_COACHING_ONLY_MESSAGE
+    : PARTICIPANT_FULLY_SCHEDULED_MESSAGE
+}
+
+/** All required hours are scheduled — not over cap and no auth issues */
+export function isParticipantFullyScheduled(participant: Participant, shifts: Shift[]): boolean {
+  if (participantHasAuthIssue(participant, shifts)) return false
+  if (participantHasHoursIssue(participant, shifts)) return false
+  return isParticipantHoursComplete(participant, getParticipantHoursTotal(participant.id, shifts))
+}
+
+export function isParticipantUpcomingForWeek(
+  participant: Participant,
+  weekEnd: string,
+  lookaheadWeeks = PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS,
+): boolean {
+  if (participant.authStart <= weekEnd) return false
+  const lookaheadEnd = toDateInput(addDays(parseDateInput(weekEnd), lookaheadWeeks * 7))
+  return participant.authStart <= lookaheadEnd
+}
+
+/** Whether a participant should appear in the sidebar for the viewed calendar week */
+export function isParticipantRelevantForWeek(
+  participant: Participant,
+  shifts: Shift[],
+  weekDates: string[],
+  options?: { lookaheadWeeks?: number; totals?: ParticipantHoursTotal },
+): boolean {
+  const weekStart = weekDates[0]
+  const weekEnd = weekDates[weekDates.length - 1]
+
+  const authOverlaps =
+    participant.authStart <= weekEnd && participant.authEnd >= weekStart
+
+  const hasShiftsThisWeek = shifts.some(
+    (s) => s.participantId === participant.id && weekDates.includes(s.date),
+  )
+
+  const totals = options?.totals ?? getParticipantHoursTotal(participant.id, shifts)
+  const complete = isParticipantHoursComplete(participant, totals)
+  const upcoming = isParticipantUpcomingForWeek(
+    participant,
+    weekEnd,
+    options?.lookaheadWeeks,
+  )
+
+  return authOverlaps || hasShiftsThisWeek || !complete || upcoming
+}
+
 export function participantHasAuthIssue(participant: Participant, shifts: Shift[]): boolean {
   return shifts.some(
     (s) =>
@@ -256,6 +343,65 @@ export function participantHasHoursIssue(participant: Participant, shifts: Shift
 
 export function formatHoursValue(hours: number): string {
   return String(Math.round(hours * 10) / 10)
+}
+
+export function getShiftMilestoneLabels(
+  participant: Participant,
+  shiftId: string,
+  shifts: Shift[],
+): string[] {
+  const coachingOnly = isCoachingOnlyParticipant(participant)
+  const ordered = shifts
+    .filter((s) => s.participantId === participant.id)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes)
+
+  let cumWork = 0
+  let cumCoached = 0
+  let seenCoachingShift = false
+
+  for (const s of ordered) {
+    const hours = durationHours(s.startMinutes, s.endMinutes)
+    const workBefore = cumWork
+    const coachedBefore = cumCoached
+    const isFirstWorkShift = !coachingOnly && cumWork === 0
+
+    cumWork += hours
+
+    let isFirstCoachingShift = false
+    if (s.type === 'coached') {
+      isFirstCoachingShift = !seenCoachingShift
+      seenCoachingShift = true
+      cumCoached += hours
+    }
+
+    if (s.id !== shiftId) continue
+
+    const labels: string[] = []
+    if (isFirstWorkShift) labels.push('First working shift')
+    if (isFirstCoachingShift) labels.push('First coaching shift')
+
+    if (
+      !coachingOnly &&
+      participant.workingHoursPerWeek > 0 &&
+      workBefore < participant.workingHoursPerWeek &&
+      cumWork >= participant.workingHoursPerWeek
+    ) {
+      labels.push('Last working shift')
+    }
+
+    if (
+      s.type === 'coached' &&
+      participant.coachingHoursPerWeek > 0 &&
+      coachedBefore < participant.coachingHoursPerWeek &&
+      cumCoached >= participant.coachingHoursPerWeek
+    ) {
+      labels.push('Last coaching shift')
+    }
+
+    return labels
+  }
+
+  return []
 }
 
 /** Maximum coached hours a coach may be assigned in a calendar week */
@@ -455,7 +601,6 @@ export function buildCopiedShiftsFromPreviousWeek(
   const dateMap = new Map(prevWeek.map((d, i) => [d, currentWeek[i]]))
 
   const copied: Omit<Shift, 'id'>[] = []
-  const booked = [...shifts]
 
   for (const shift of shifts) {
     if (!prevWeek.includes(shift.date)) continue
@@ -463,8 +608,6 @@ export function buildCopiedShiftsFromPreviousWeek(
     const newDate = dateMap.get(shift.date)!
     const participant = participants.find((p) => p.id === shift.participantId)
     if (!participant) continue
-    if (newDate < participant.authStart || newDate > participant.authEnd) continue
-    if (participantHasShiftOnDate(shift.participantId, newDate, booked)) continue
 
     const copy: Omit<Shift, 'id'> = {
       participantId: shift.participantId,
@@ -476,8 +619,41 @@ export function buildCopiedShiftsFromPreviousWeek(
       notes: shift.notes,
     }
     copied.push(copy)
-    booked.push({ ...copy, id: `copy-${copied.length}` })
   }
 
   return copied
+}
+
+/** Split a shift in half — first half coached (keeps coach if any), second half solo */
+export function splitShiftForPartialCoverage(
+  shift: Shift,
+): [Omit<Shift, 'id'>, Omit<Shift, 'id'>] | null {
+  const duration = shift.endMinutes - shift.startMinutes
+  const minHalf = SLOT_MINUTES
+  if (duration < minHalf * 2) return null
+
+  const midMinutes =
+    shift.startMinutes + Math.round(duration / 2 / SLOT_MINUTES) * SLOT_MINUTES
+  if (midMinutes - shift.startMinutes < minHalf) return null
+  if (shift.endMinutes - midMinutes < minHalf) return null
+
+  const coachedHalf: Omit<Shift, 'id'> = {
+    participantId: shift.participantId,
+    date: shift.date,
+    startMinutes: shift.startMinutes,
+    endMinutes: midMinutes,
+    type: 'coached',
+    coachId: shift.type === 'coached' ? shift.coachId : undefined,
+    notes: shift.notes,
+  }
+
+  const soloHalf: Omit<Shift, 'id'> = {
+    participantId: shift.participantId,
+    date: shift.date,
+    startMinutes: midMinutes,
+    endMinutes: shift.endMinutes,
+    type: 'solo',
+  }
+
+  return [coachedHalf, soloHalf]
 }
