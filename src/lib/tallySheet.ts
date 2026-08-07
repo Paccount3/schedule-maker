@@ -1,4 +1,4 @@
-import type { Coach, Participant, ParticipantService, Shift } from '../types'
+import type { Participant, ParticipantService, Shift } from '../types'
 import { durationHours, parseDateInput, toDateInput } from './time'
 
 export interface TallySheetHourRow {
@@ -81,36 +81,6 @@ function hoursByDate(
   return map
 }
 
-function primaryCoachName(
-  shifts: Shift[],
-  coaches: Coach[],
-  participantId: string,
-  startDate: string,
-  endDate: string,
-): string {
-  const hoursByCoach = new Map<string, number>()
-
-  for (const shift of shifts) {
-    if (shift.participantId !== participantId || shift.type !== 'coached' || !shift.coachId) {
-      continue
-    }
-    if (shift.date < startDate || shift.date > endDate) continue
-    const hours = durationHours(shift.startMinutes, shift.endMinutes)
-    hoursByCoach.set(shift.coachId, (hoursByCoach.get(shift.coachId) ?? 0) + hours)
-  }
-
-  let bestCoachId = ''
-  let bestHours = 0
-  for (const [coachId, hours] of hoursByCoach) {
-    if (hours > bestHours) {
-      bestHours = hours
-      bestCoachId = coachId
-    }
-  }
-
-  return coaches.find((coach) => coach.id === bestCoachId)?.name ?? ''
-}
-
 export function serviceTallyLabel(service: ParticipantService): string {
   return SERVICE_TALLY_LABELS[service] ?? service
 }
@@ -137,7 +107,6 @@ export function recalculateTallySheet(data: TallySheetData): TallySheetData {
 export function buildTallySheet(
   participant: Participant,
   shifts: Shift[],
-  coaches: Coach[],
   startDate: string,
   endDate: string,
 ): TallySheetData {
@@ -176,7 +145,7 @@ export function buildTallySheet(
     authNumber: participant.authNumber,
     serviceLabel: serviceTallyLabel(participant.service),
     consumerName: participant.name || 'Unnamed',
-    staffName: primaryCoachName(shifts, coaches, participant.id, startDate, endDate),
+    staffName: '',
     dorsCounselor: '',
     periodFrom: startDate,
     periodTo: endDate,

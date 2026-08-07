@@ -51,7 +51,7 @@ function drawTallySheetPage(doc: jsPDF, data: TallySheetData): void {
   doc.setFontSize(10)
   doc.text(`Consumers Name: ${data.consumerName}`, margin, y)
   y += 18
-  doc.text(`Staff Name: ${data.staffName}`, margin, y)
+  doc.text(`Staff Name: ${data.staffName || '_________________________'}`, margin, y)
   y += 18
   doc.text(`DORS Counselor: ${data.dorsCounselor}`, margin, y)
   y += 22

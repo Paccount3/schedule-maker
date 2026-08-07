@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import type { Coach, Participant, Shift } from '../types'
+import type { Participant, Shift } from '../types'
 import {
   buildTallySheet,
   createEmptyHourRow,
@@ -17,7 +17,6 @@ import { Modal } from './Modal'
 interface TallySheetModalProps {
   participant: Participant
   shifts: Shift[]
-  coaches: Coach[]
   startDate: string
   endDate: string
   onClose: () => void
@@ -38,13 +37,12 @@ const tableRowClass =
 export function TallySheetModal({
   participant,
   shifts,
-  coaches,
   startDate,
   endDate,
   onClose,
 }: TallySheetModalProps) {
   const [data, setData] = useState<TallySheetData>(() =>
-    buildTallySheet(participant, shifts, coaches, startDate, endDate),
+    buildTallySheet(participant, shifts, startDate, endDate),
   )
 
   const applyData = useCallback((next: TallySheetData) => {
@@ -234,6 +232,7 @@ function TallySheetPreview({
             className={paperInput}
             value={data.staffName}
             onChange={(e) => onFieldChange({ staffName: e.target.value })}
+            placeholder="Leave blank for staff to complete"
           />
         </label>
         <label className="flex items-center gap-2">

@@ -39,12 +39,14 @@ function SignatureField({
   signatureValue,
   onPrintedChange,
   onSignatureChange,
+  printedPlaceholder = 'Printed name',
 }: {
   printedLabel: string
   printedValue: string
   signatureValue: string
   onPrintedChange: (value: string) => void
   onSignatureChange: (value: string) => void
+  printedPlaceholder?: string
 }) {
   return (
     <div className="space-y-2">
@@ -54,7 +56,7 @@ function SignatureField({
           className={`${paperInput} mt-1 font-sans text-sm`}
           value={printedValue}
           onChange={(e) => onPrintedChange(e.target.value)}
-          placeholder="Printed name"
+          placeholder={printedPlaceholder}
         />
       </label>
       <label className="block text-sm">
@@ -368,6 +370,7 @@ function CheckRequestPreview({
             signatureValue={data.requestedBySignature}
             onPrintedChange={(requestedBy) => onChange({ requestedBy })}
             onSignatureChange={(requestedBySignature) => onChange({ requestedBySignature })}
+            printedPlaceholder="Leave blank for staff to complete"
           />
         </div>
       </div>

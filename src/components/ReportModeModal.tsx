@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { Participant } from '../types'
 import { useStore } from '../store/useStore'
 import {
@@ -15,6 +15,7 @@ import {
 } from '../lib/regions'
 import { formatAuthRange, getWeekDates } from '../lib/time'
 import { DateSelect } from './DateSelect'
+import { ChevronIcon } from './ChevronIcon'
 import { Modal } from './Modal'
 import { TimeCardModal } from './TimeCardModal'
 import { TallySheetModal } from './TallySheetModal'
@@ -139,12 +140,65 @@ function ParticipantReportCard({
   )
 }
 
+function CollapsibleReportSection({
+  title,
+  count,
+  expanded,
+  onToggle,
+  nested,
+  children,
+}: {
+  title: string
+  count?: number
+  expanded: boolean
+  onToggle: () => void
+  nested?: boolean
+  children: ReactNode
+}) {
+  return (
+    <section
+      className={
+        nested
+          ? 'overflow-hidden rounded-md border border-slate-800 bg-slate-900/40'
+          : 'overflow-hidden rounded-lg border border-slate-800 bg-slate-900/30'
+      }
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-slate-800/60"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronIcon expanded={expanded} />
+          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            {title}
+          </span>
+          {count !== undefined && (
+            <span className="text-[10px] tabular-nums text-slate-600">({count})</span>
+          )}
+        </span>
+      </button>
+      {expanded && (
+        <div
+          className={`space-y-2 border-t border-slate-800 px-3 pb-3 pt-2 ${nested ? '' : 'space-y-3'}`}
+        >
+          {children}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportModeModalProps) {
   const { state } = useStore()
   const [startDate, setStartDate] = useState(defaultStart)
   const [endDate, setEndDate] = useState(defaultEnd)
   const [timeCardParticipant, setTimeCardParticipant] = useState<Participant | null>(null)
   const [tallySheetParticipant, setTallySheetParticipant] = useState<Participant | null>(null)
+  const [coachingMenuExpanded, setCoachingMenuExpanded] = useState(true)
+  const [coachesExpanded, setCoachesExpanded] = useState(true)
+  const [participantsExpanded, setParticipantsExpanded] = useState(true)
 
   const rangeValid = startDate <= endDate
 
@@ -252,40 +306,49 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
             </div>
           )}
 
-          <section>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Coaches
-            </h4>
-            {coachEntries.length === 0 ? (
-              <p className="text-sm text-slate-600">None</p>
-            ) : (
-              <div className="space-y-2">
-                {coachEntries.map((entry) => (
-                  <CoachReportCard key={entry.id} entry={entry} />
-                ))}
-              </div>
-            )}
-          </section>
+          {rangeValid && (
+            <CollapsibleReportSection
+              title="Coaching & participants"
+              count={coachEntries.length + participantEntries.length}
+              expanded={coachingMenuExpanded}
+              onToggle={() => setCoachingMenuExpanded((open) => !open)}
+            >
+              <CollapsibleReportSection
+                title="Coaches"
+                count={coachEntries.length}
+                expanded={coachesExpanded}
+                onToggle={() => setCoachesExpanded((open) => !open)}
+                nested
+              >
+                {coachEntries.length === 0 ? (
+                  <p className="text-sm text-slate-600">None</p>
+                ) : (
+                  coachEntries.map((entry) => <CoachReportCard key={entry.id} entry={entry} />)
+                )}
+              </CollapsibleReportSection>
 
-          <section>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Participants
-            </h4>
-            {participantEntries.length === 0 ? (
-              <p className="text-sm text-slate-600">None</p>
-            ) : (
-              <div className="space-y-2">
-                {participantEntries.map((entry) => (
-                  <ParticipantReportCard
-                    key={entry.id}
-                    entry={entry}
-                    onGenerateTimeCard={() => setTimeCardParticipant(entry.participant)}
-                    onGenerateTallySheet={() => setTallySheetParticipant(entry.participant)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
+              <CollapsibleReportSection
+                title="Participants"
+                count={participantEntries.length}
+                expanded={participantsExpanded}
+                onToggle={() => setParticipantsExpanded((open) => !open)}
+                nested
+              >
+                {participantEntries.length === 0 ? (
+                  <p className="text-sm text-slate-600">None</p>
+                ) : (
+                  participantEntries.map((entry) => (
+                    <ParticipantReportCard
+                      key={entry.id}
+                      entry={entry}
+                      onGenerateTimeCard={() => setTimeCardParticipant(entry.participant)}
+                      onGenerateTallySheet={() => setTallySheetParticipant(entry.participant)}
+                    />
+                  ))
+                )}
+              </CollapsibleReportSection>
+            </CollapsibleReportSection>
+          )}
         </div>
       </Modal>
 
@@ -303,7 +366,6 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
         <TallySheetModal
           participant={tallySheetParticipant}
           shifts={regionShifts}
-          coaches={regionCoaches}
           startDate={startDate}
           endDate={endDate}
           onClose={() => setTallySheetParticipant(null)}
