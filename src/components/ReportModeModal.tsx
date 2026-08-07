@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Participant } from '../types'
 import { useStore } from '../store/useStore'
 import {
@@ -98,44 +98,69 @@ function CoachReportCard({ entry }: { entry: CoachReportEntry }) {
 
 function ParticipantReportCard({
   entry,
+  expanded,
+  onToggle,
   onGenerateTimeCard,
   onGenerateTallySheet,
 }: {
   entry: ParticipantReportEntry
+  expanded: boolean
+  onToggle: () => void
   onGenerateTimeCard: () => void
   onGenerateTallySheet: () => void
 }) {
+  const hoursSummary = entry.showWorked
+    ? `${formatHoursValue(entry.hoursWorked)}h worked · ${formatHoursValue(entry.hoursCoached)}h coached`
+    : `${formatHoursValue(entry.hoursCoached)}h coached`
+
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-800/40 px-3 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h5 className="text-base font-semibold text-slate-100">{entry.name}</h5>
-          <p className="mt-0.5 font-mono text-[10px] tracking-wide text-slate-500">
+    <div className="overflow-hidden rounded-md border border-slate-800 bg-slate-800/40">
+      <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-start gap-2 text-left transition-colors hover:text-slate-100"
+        >
+          <span className="mt-0.5 shrink-0 text-slate-500">
+            <ChevronIcon expanded={expanded} />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-base font-semibold text-slate-100">{entry.name}</span>
+            {!expanded && (
+              <span className="mt-0.5 block text-xs tabular-nums text-slate-400">{hoursSummary}</span>
+            )}
+          </span>
+        </button>
+        <CopyButton text={entry.copyText} />
+      </div>
+      {expanded && (
+        <div className="border-t border-slate-800 px-3 pb-3 pt-2">
+          <p className="font-mono text-[10px] tracking-wide text-slate-500">
             Auth # {entry.participant.authNumber}
           </p>
           <div className="mt-1.5 space-y-0.5 text-sm tabular-nums text-slate-300">
             {entry.showWorked && <p>{formatHoursValue(entry.hoursWorked)}h worked</p>}
             <p>{formatHoursValue(entry.hoursCoached)}h coached</p>
           </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onGenerateTimeCard}
+              className="rounded-md border border-blue-600/50 bg-blue-950/40 px-2.5 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-950/70"
+            >
+              Generate Time Card
+            </button>
+            <button
+              type="button"
+              onClick={onGenerateTallySheet}
+              className="rounded-md border border-emerald-600/50 bg-emerald-950/40 px-2.5 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-950/70"
+            >
+              Generate Tally Sheet
+            </button>
+          </div>
         </div>
-        <CopyButton text={entry.copyText} />
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onGenerateTimeCard}
-          className="rounded-md border border-blue-600/50 bg-blue-950/40 px-2.5 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-950/70"
-        >
-          Generate Time Card
-        </button>
-        <button
-          type="button"
-          onClick={onGenerateTallySheet}
-          className="rounded-md border border-emerald-600/50 bg-emerald-950/40 px-2.5 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-950/70"
-        >
-          Generate Tally Sheet
-        </button>
-      </div>
+      )}
     </div>
   )
 }
@@ -199,6 +224,9 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
   const [coachingMenuExpanded, setCoachingMenuExpanded] = useState(true)
   const [coachesExpanded, setCoachesExpanded] = useState(true)
   const [participantsExpanded, setParticipantsExpanded] = useState(true)
+  const [collapsedParticipantIds, setCollapsedParticipantIds] = useState<Set<string>>(
+    () => new Set(),
+  )
 
   const rangeValid = startDate <= endDate
 
@@ -257,6 +285,26 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
       }
     })
   }, [regionCoaches, regionShifts, startDate, endDate, rangeValid])
+
+  useEffect(() => {
+    const validIds = new Set(participantEntries.map((entry) => entry.id))
+    setCollapsedParticipantIds((prev) => {
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (validIds.has(id)) next.add(id)
+      }
+      return next.size === prev.size ? prev : next
+    })
+  }, [participantEntries])
+
+  const toggleParticipantCard = (participantId: string) => {
+    setCollapsedParticipantIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(participantId)) next.delete(participantId)
+      else next.add(participantId)
+      return next
+    })
+  }
 
   const rangeLabel = rangeValid ? formatAuthRange(startDate, endDate) : 'Invalid date range'
   const regionLabel = regionName(state.regions, state.selectedRegionId)
@@ -341,6 +389,8 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
                     <ParticipantReportCard
                       key={entry.id}
                       entry={entry}
+                      expanded={!collapsedParticipantIds.has(entry.id)}
+                      onToggle={() => toggleParticipantCard(entry.id)}
                       onGenerateTimeCard={() => setTimeCardParticipant(entry.participant)}
                       onGenerateTallySheet={() => setTallySheetParticipant(entry.participant)}
                     />
