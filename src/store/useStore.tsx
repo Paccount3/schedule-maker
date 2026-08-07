@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import type { AppState, Coach, Participant, Shift } from '../types'
+import type { AppState, Coach, OtherCoachingActivity, Participant, Shift } from '../types'
 import {
   filterCoachesByRegion,
   filterParticipantsByRegion,
@@ -8,13 +8,15 @@ import {
 } from '../lib/regions'
 import {
   createEmptyCoach,
+  createEmptyOtherCoachingActivity,
   createEmptyParticipant,
+  createOtherCoachingShift,
   createShift,
   loadState,
   saveState,
 } from '../lib/storage'
 import { buildCopiedShiftsFromPreviousWeek } from '../lib/scheduling'
-import { addDays, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
+import { addDays, durationHours, endMinutesFromStartingHours, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
 
 interface StoreContextValue {
   state: AppState
@@ -30,6 +32,9 @@ interface StoreContextValue {
   addCoach: () => Coach
   updateCoach: (c: Coach) => void
   removeCoach: (id: string) => void
+  addOtherCoachingActivity: () => OtherCoachingActivity
+  updateOtherCoachingActivity: (activity: OtherCoachingActivity) => void
+  removeOtherCoachingActivity: (id: string) => void
   addShift: (shift: Omit<Shift, 'id'>) => Shift
   addShifts: (shifts: Omit<Shift, 'id'>[]) => void
   updateShift: (shift: Shift) => void
@@ -40,6 +45,13 @@ interface StoreContextValue {
     startMinutes: number,
     endMinutes: number,
     type?: 'solo' | 'coached',
+  ) => Shift
+  createQuickOtherCoachingShift: (
+    activityId: string,
+    coachId: string,
+    date: string,
+    startMinutes: number,
+    endMinutes: number,
   ) => Shift
   copyShiftsFromPreviousWeek: () => number
 }
@@ -118,9 +130,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       update((s) => ({
         ...s,
         coaches: s.coaches.filter((x) => x.id !== id),
-        shifts: s.shifts.map((sh) =>
-          sh.coachId === id ? { ...sh, coachId: undefined, type: 'solo' as const } : sh,
-        ),
+        shifts: s.shifts
+          .filter((sh) => !(sh.type === 'other-coaching' && sh.coachId === id))
+          .map((sh) =>
+            sh.coachId === id ? { ...sh, coachId: undefined, type: 'solo' as const } : sh,
+          ),
+      })),
+    addOtherCoachingActivity: () => {
+      const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
+      const activity = createEmptyOtherCoachingActivity(
+        state.selectedRegionId,
+        regionCoaches[0]?.id ?? '',
+      )
+      update((s) => ({
+        ...s,
+        otherCoachingActivities: [...s.otherCoachingActivities, activity],
+      }))
+      return activity
+    },
+    updateOtherCoachingActivity: (activity) =>
+      update((s) => {
+        const normalized = { ...activity, shiftsPerWeek: 1 }
+        return {
+          ...s,
+          otherCoachingActivities: s.otherCoachingActivities.map((x) =>
+            x.id === normalized.id ? normalized : x,
+          ),
+          shifts: s.shifts.map((sh) => {
+            if (sh.otherCoachingActivityId !== normalized.id || sh.type !== 'other-coaching') {
+              return sh
+            }
+            const endMinutes = endMinutesFromStartingHours(
+              sh.startMinutes,
+              normalized.hoursPerWeek,
+            )
+            return {
+              ...sh,
+              coachId: normalized.coachId || sh.coachId,
+              endMinutes: Math.max(sh.startMinutes + 30, endMinutes),
+            }
+          }),
+        }
+      }),
+    removeOtherCoachingActivity: (id) =>
+      update((s) => ({
+        ...s,
+        otherCoachingActivities: s.otherCoachingActivities.filter((x) => x.id !== id),
+        shifts: s.shifts.filter((x) => x.otherCoachingActivityId !== id),
       })),
     addShift: (shiftData) => {
       const shift: Shift = { ...shiftData, id: crypto.randomUUID() }
@@ -135,14 +191,51 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       update((s) => ({ ...s, shifts: [...s.shifts, ...newShifts] }))
     },
     updateShift: (shift) =>
-      update((s) => ({
-        ...s,
-        shifts: s.shifts.map((x) => (x.id === shift.id ? shift : x)),
-      })),
+      update((s) => {
+        if (shift.type === 'other-coaching' && shift.otherCoachingActivityId) {
+          const activityId = shift.otherCoachingActivityId
+          const hoursPerWeek = durationHours(shift.startMinutes, shift.endMinutes)
+          const coachId = shift.coachId
+          return {
+            ...s,
+            otherCoachingActivities: s.otherCoachingActivities.map((a) =>
+              a.id === activityId
+                ? {
+                    ...a,
+                    hoursPerWeek,
+                    ...(coachId ? { coachId } : {}),
+                  }
+                : a,
+            ),
+            shifts: s.shifts.map((sh) => {
+              if (sh.id === shift.id) return shift
+              if (sh.otherCoachingActivityId === activityId && sh.type === 'other-coaching' && coachId) {
+                return { ...sh, coachId }
+              }
+              return sh
+            }),
+          }
+        }
+        return {
+          ...s,
+          shifts: s.shifts.map((x) => (x.id === shift.id ? shift : x)),
+        }
+      }),
     removeShift: (id) =>
       update((s) => ({ ...s, shifts: s.shifts.filter((x) => x.id !== id) })),
     createQuickShift: (participantId, date, startMinutes, endMinutes, type = 'solo') => {
       const shift = createShift(participantId, date, startMinutes, endMinutes, type)
+      update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      return shift
+    },
+    createQuickOtherCoachingShift: (activityId, coachId, date, startMinutes, endMinutes) => {
+      const shift = createOtherCoachingShift(
+        activityId,
+        coachId,
+        date,
+        startMinutes,
+        endMinutes,
+      )
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
       return shift
     },
@@ -155,6 +248,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         state.shifts,
         state.participants,
         state.selectedRegionId,
+        state.otherCoachingActivities,
       )
       const copied = buildCopiedShiftsFromPreviousWeek(
         state.weekStart,

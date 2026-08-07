@@ -13,11 +13,7 @@ import {
   isCoachingOnlyParticipant,
   splitShiftForPartialCoverage,
 } from '../lib/scheduling'
-import {
-  filterCoachesByRegion,
-  filterParticipantsForWeekView,
-  filterShiftsByRegion,
-} from '../lib/regions'
+import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsForWeekView, filterShiftsByRegion } from '../lib/regions'
 import { layoutDayShifts } from '../lib/shiftLayout'
 import type { ShiftDragPreview } from '../lib/shiftDrag'
 import {
@@ -28,6 +24,7 @@ import {
   getWeekDates,
   CALENDAR_VIEW_END,
   CALENDAR_VIEW_START,
+  endMinutesFromStartingHours,
   parseDateInput,
   SLOT_MINUTES,
   snapMinutesFromGridY,
@@ -47,8 +44,10 @@ const HOUR_COUNT = (CALENDAR_VIEW_END - CALENDAR_VIEW_START) / 60
 
 interface WeekSchedulerProps {
   selectedParticipantId: string
+  selectedOtherCoachingId: string
   visibleCoachIds: Set<string>
   visibleCoachShiftIds: Set<string>
+  visibleOtherCoachingIds: Set<string>
   visibleParticipantIds: Set<string>
 }
 
@@ -106,8 +105,10 @@ function CoachAvailabilityOverlay({
 
 export function WeekScheduler({
   selectedParticipantId,
+  selectedOtherCoachingId,
   visibleCoachIds,
   visibleCoachShiftIds,
+  visibleOtherCoachingIds,
   visibleParticipantIds,
 }: WeekSchedulerProps) {
   const {
@@ -116,6 +117,7 @@ export function WeekScheduler({
     nextWeek,
     goToToday,
     createQuickShift,
+    createQuickOtherCoachingShift,
     updateShift,
     addShift,
     addShifts,
@@ -159,15 +161,36 @@ export function WeekScheduler({
     () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
     [state.coaches, state.selectedRegionId],
   )
+  const regionOtherCoaching = useMemo(
+    () =>
+      filterOtherCoachingForWeekView(
+        state.otherCoachingActivities,
+        state.selectedRegionId,
+        state.shifts,
+        state.weekStart,
+      ),
+    [state.otherCoachingActivities, state.selectedRegionId, state.shifts, state.weekStart],
+  )
   const regionShifts = useMemo(
-    () => filterShiftsByRegion(state.shifts, state.participants, state.selectedRegionId),
-    [state.shifts, state.participants, state.selectedRegionId],
+    () =>
+      filterShiftsByRegion(
+        state.shifts,
+        state.participants,
+        state.selectedRegionId,
+        state.otherCoachingActivities,
+      ),
+    [state.shifts, state.participants, state.selectedRegionId, state.otherCoachingActivities],
   )
 
   const participant = regionParticipants.find((p) => p.id === selectedParticipantId)
+  const otherCoachingActivity = regionOtherCoaching.find((a) => a.id === selectedOtherCoachingId)
   const participantMap = useMemo(
     () => new Map(regionParticipants.map((p) => [p.id, p])),
     [regionParticipants],
+  )
+  const otherCoachingMap = useMemo(
+    () => new Map(regionOtherCoaching.map((a) => [a.id, a])),
+    [regionOtherCoaching],
   )
 
   const visibleCoaches = useMemo(
@@ -177,13 +200,22 @@ export function WeekScheduler({
 
   const visibleShifts = useMemo(
     () =>
-      regionShifts.filter(
-        (s) =>
-          weekDates.includes(s.date) &&
+      regionShifts.filter((s) => {
+        if (!weekDates.includes(s.date)) return false
+        if (s.type === 'other-coaching') {
+          return (
+            !!s.otherCoachingActivityId &&
+            visibleOtherCoachingIds.has(s.otherCoachingActivityId) &&
+            (!s.coachId || visibleCoachShiftIds.has(s.coachId))
+          )
+        }
+        return (
+          !!s.participantId &&
           visibleParticipantIds.has(s.participantId) &&
-          (s.type !== 'coached' || !s.coachId || visibleCoachShiftIds.has(s.coachId)),
-      ),
-    [regionShifts, weekDates, visibleParticipantIds, visibleCoachShiftIds],
+          (s.type !== 'coached' || !s.coachId || visibleCoachShiftIds.has(s.coachId))
+        )
+      }),
+    [regionShifts, weekDates, visibleParticipantIds, visibleCoachShiftIds, visibleOtherCoachingIds],
   )
 
   const hoursSummary = participant
@@ -243,11 +275,26 @@ export function WeekScheduler({
   )
 
   const handleCellClick = (date: string, hourMinutes: number) => {
-    if (!participant || isDragging) return
+    if (isDragging) return
 
     const startMinutes = hourMinutes
-    const endMinutes = Math.min(hourMinutes + 2 * 60, CALENDAR_VIEW_END)
+    const endMinutes = otherCoachingActivity
+      ? endMinutesFromStartingHours(startMinutes, otherCoachingActivity.hoursPerWeek)
+      : Math.min(hourMinutes + 2 * 60, CALENDAR_VIEW_END)
     if (endMinutes <= startMinutes) return
+
+    if (otherCoachingActivity?.coachId) {
+      createQuickOtherCoachingShift(
+        otherCoachingActivity.id,
+        otherCoachingActivity.coachId,
+        date,
+        startMinutes,
+        endMinutes,
+      )
+      return
+    }
+
+    if (!participant) return
 
     const shift = createQuickShift(participant.id, date, startMinutes, endMinutes, 'solo')
     setIsNewShift(true)
@@ -257,9 +304,8 @@ export function WeekScheduler({
   const applyShiftPreview = useCallback(
     (original: Shift, preview: ShiftDragPreview): Shift => {
       let date = preview.date
-      const p = participantMap.get(original.participantId)
-
-      if (date !== original.date) {
+      if (original.type !== 'other-coaching' && original.participantId) {
+        const p = participantMap.get(original.participantId)
         if (p && (date < p.authStart || date > p.authEnd)) {
           date = original.date
         }
@@ -293,7 +339,7 @@ export function WeekScheduler({
   )
 
   const gridBodyHeight = hours.length * hourHeight
-  const canAddShifts = !!participant
+  const canAddShifts = !!participant || !!otherCoachingActivity?.coachId
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -301,19 +347,30 @@ export function WeekScheduler({
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-slate-100">Week schedule</h2>
           <p className="text-xs text-slate-500">
-            {participant ? (
+            {otherCoachingActivity ? (
+              <>
+                Adding shifts for{' '}
+                <span className="font-medium text-teal-400">{otherCoachingActivity.name}</span>
+                {otherCoachingActivity.coachId
+                  ? ` · ${coachMap.get(otherCoachingActivity.coachId)?.name || 'Coach'}`
+                  : ''}
+              </>
+            ) : participant ? (
               <>
                 Adding shifts for{' '}
                 <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
                 {participant.site ? ` · ${participant.site}` : ''}
               </>
-            ) : state.participants.length === 0 ? (
+            ) : otherCoachingActivity ? (
+              'Assign a coach to this assignment before adding calendar blocks.'
+            ) : state.participants.length === 0 && regionOtherCoaching.length === 0 ? (
               <>
-                Add a participant using <strong className="text-slate-300">+ Add</strong> in the
-                sidebar to start scheduling.
+                Add a participant or other coaching assignment using{' '}
+                <strong className="text-slate-300">+ Add</strong> in the sidebar to start
+                scheduling.
               </>
             ) : (
-              'Select a participant from the sidebar to add shifts.'
+              'Select a participant or other coaching assignment from the sidebar to add shifts.'
             )}
           </p>
           {hoursSummary && participant && (
@@ -375,7 +432,7 @@ export function WeekScheduler({
           </button>
           <button
             onClick={() => setReportOpen(true)}
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+            className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-100"
           >
             Report Mode
           </button>
@@ -391,6 +448,10 @@ export function WeekScheduler({
           <span className="inline-block h-3 w-3 rounded border border-violet-500 bg-violet-900/50" />
           Coached shift
         </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-3 w-3 rounded border border-violet-500 bg-violet-900/50" />
+          Other coaching assignment (coach color)
+        </span>
         {visibleCoaches.map((c) => (
           <span key={c.id} className="flex items-center gap-1.5">
             <span
@@ -403,7 +464,7 @@ export function WeekScheduler({
         <span>
           {canAddShifts
             ? 'Click an empty slot to add a shift · drag top/bottom to resize · drag center to move · right-click to copy/paste'
-            : 'Select a participant to add shifts · drag to move/resize · right-click shifts to copy and paste on calendar'}
+            : 'Select a participant or other coaching assignment to add shifts · drag to move/resize · right-click shifts to copy and paste on calendar'}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-amber-950/75" />
@@ -517,9 +578,15 @@ export function WeekScheduler({
                     const original = regionShifts.find((s) => s.id === shift.id)!
                     const { top, height } = blockLayout
                     const coach = shift.coachId ? coachMap.get(shift.coachId) : undefined
+                    const isOtherCoaching = shift.type === 'other-coaching'
                     const isCoached = shift.type === 'coached' && !!coach
-                    const p = participantMap.get(shift.participantId)
-                    const isSelected = shift.participantId === selectedParticipantId
+                    const activity = shift.otherCoachingActivityId
+                      ? otherCoachingMap.get(shift.otherCoachingActivityId)
+                      : undefined
+                    const p = shift.participantId ? participantMap.get(shift.participantId) : undefined
+                    const isSelected =
+                      shift.participantId === selectedParticipantId ||
+                      shift.otherCoachingActivityId === selectedOtherCoachingId
                     const blockDragging = dragPreview?.shiftId === shift.id
                     const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
                     const shiftsForEval = regionShifts.map((s) =>
@@ -536,9 +603,10 @@ export function WeekScheduler({
                     const errorLevel = getShiftDisplayErrorLevel(conflicts)
                     const multiShiftNotice = hasMultiShiftDayNotice(conflicts)
                     const errorSummary = formatShiftConflictSummary(conflicts)
-                    const milestoneLabels = p
-                      ? getShiftMilestoneLabels(p, shift.id, shiftsForEval)
-                      : []
+                    const milestoneLabels =
+                      p && !isOtherCoaching
+                        ? getShiftMilestoneLabels(p, shift.id, shiftsForEval)
+                        : []
 
                     return (
                       <ShiftBlock
@@ -548,11 +616,16 @@ export function WeekScheduler({
                         hourHeight={hourHeight}
                         top={top}
                         height={height}
-                        participantName={p?.name || 'Participant'}
-                        site={p?.site}
-                        accentColor={isCoached ? coach!.color : '#64748b'}
+                        participantName={
+                          isOtherCoaching ? activity?.name || 'Other coaching' : p?.name || 'Participant'
+                        }
+                        site={isOtherCoaching ? activity?.notes : p?.site}
+                        accentColor={
+                          coach?.color ?? (isCoached || isOtherCoaching ? '#64748b' : '#64748b')
+                        }
                         coachName={coach?.name}
-                        isCoached={isCoached}
+                        isCoached={isCoached || isOtherCoaching}
+                        isOtherCoaching={isOtherCoaching}
                         isSelected={isSelected}
                         isDragging={blockDragging}
                         errorLevel={errorLevel}
@@ -571,6 +644,23 @@ export function WeekScheduler({
                           setIsDragging(false)
                         }}
                         onContextMenu={(e) => {
+                          if (isOtherCoaching) {
+                            openContextMenu(e, [
+                              {
+                                label: 'Copy',
+                                onClick: () => {
+                                  copiedShiftRef.current = shiftToClipboard(original)
+                                },
+                              },
+                              {
+                                label: 'Delete Shift',
+                                onClick: () => {
+                                  removeShift(original.id)
+                                },
+                              },
+                            ])
+                            return
+                          }
                           const canSplit = splitShiftForPartialCoverage(original) !== null
                           openContextMenu(e, [
                             {

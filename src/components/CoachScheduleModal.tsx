@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
 import {
   filterCoachesByRegion,
+  filterOtherCoachingByRegion,
   filterParticipantsByRegion,
   filterShiftsByRegion,
   regionName,
@@ -11,6 +12,7 @@ import {
   coachIdsWithCoachedShiftsInWeek,
 } from '../lib/scheduleWriteup'
 import { formatWeekLabel } from '../lib/time'
+import { exportScheduleWriteupPdf } from '../lib/scheduleWriteupExport'
 import { CopyTextButton } from './CopyTextButton'
 import { Modal } from './Modal'
 
@@ -31,9 +33,19 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
     () => filterParticipantsByRegion(state.participants, state.selectedRegionId),
     [state.participants, state.selectedRegionId],
   )
+  const regionOtherCoaching = useMemo(
+    () => filterOtherCoachingByRegion(state.otherCoachingActivities, state.selectedRegionId),
+    [state.otherCoachingActivities, state.selectedRegionId],
+  )
   const regionShifts = useMemo(
-    () => filterShiftsByRegion(state.shifts, state.participants, state.selectedRegionId),
-    [state.shifts, state.participants, state.selectedRegionId],
+    () =>
+      filterShiftsByRegion(
+        state.shifts,
+        state.participants,
+        state.selectedRegionId,
+        state.otherCoachingActivities,
+      ),
+    [state.shifts, state.participants, state.selectedRegionId, state.otherCoachingActivities],
   )
 
   const eligibleCoaches = useMemo(() => {
@@ -67,8 +79,9 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
       weekStart,
       regionShifts,
       regionParticipants,
+      regionOtherCoaching,
     )
-  }, [selected, weekDates, weekStart, regionShifts, regionParticipants])
+  }, [selected, weekDates, weekStart, regionShifts, regionParticipants, regionOtherCoaching])
 
   const regionLabel = regionName(state.regions, state.selectedRegionId)
 
@@ -81,6 +94,23 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
         <div className="flex justify-end gap-2">
           <CopyTextButton text={writeup} disabled={!writeup} />
           <button
+            type="button"
+            onClick={() => {
+              if (!selected || !writeup) return
+              exportScheduleWriteupPdf({
+                writeup,
+                scheduleKind: 'coach',
+                personName: selected.name || 'Unnamed',
+                regionLabel,
+                weekLabel: formatWeekLabel(weekStart),
+              })
+            }}
+            disabled={!writeup}
+            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Export PDF
+          </button>
+          <button
             onClick={onClose}
             className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
           >
@@ -91,7 +121,9 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
     >
       <div className="space-y-4">
         {eligibleCoaches.length === 0 ? (
-          <p className="text-sm text-slate-500">No coaches have coached shifts scheduled this week.</p>
+          <p className="text-sm text-slate-500">
+            No coaches have coached sessions or other coaching assignments scheduled this week.
+          </p>
         ) : (
           <>
             <label className="block">

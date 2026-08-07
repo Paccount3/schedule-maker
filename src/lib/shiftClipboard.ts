@@ -6,6 +6,7 @@ export type ShiftClipboardData = Omit<Shift, 'id' | 'date'>
 export function shiftToClipboard(shift: Shift): ShiftClipboardData {
   return {
     participantId: shift.participantId,
+    otherCoachingActivityId: shift.otherCoachingActivityId,
     startMinutes: shift.startMinutes,
     endMinutes: shift.endMinutes,
     type: shift.type,

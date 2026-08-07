@@ -1,9 +1,10 @@
-import type { Coach, Participant, Shift } from '../types'
+import type { Coach, OtherCoachingActivity, Participant, Shift } from '../types'
 import {
   formatHoursValue,
   getParticipantHoursForWeek,
   getShiftMilestoneLabels,
   isCoachingOnlyParticipant,
+  shiftUsesCoach,
 } from './scheduling'
 import {
   durationHours,
@@ -55,7 +56,7 @@ export function participantIdsWithShiftsInWeek(
   const ids = new Set(participantIds)
   const withShifts = new Set<string>()
   for (const s of shifts) {
-    if (weekDates.includes(s.date) && ids.has(s.participantId)) {
+    if (weekDates.includes(s.date) && s.participantId && ids.has(s.participantId)) {
       withShifts.add(s.participantId)
     }
   }
@@ -72,7 +73,7 @@ export function coachIdsWithCoachedShiftsInWeek(
   for (const s of shifts) {
     if (
       weekDates.includes(s.date) &&
-      s.type === 'coached' &&
+      shiftUsesCoach(s) &&
       s.coachId &&
       ids.has(s.coachId)
     ) {
@@ -101,6 +102,9 @@ export function buildParticipantWeekScheduleWriteup(
   lines.push('')
   lines.push(`Name: ${name}`)
   if (participant.site) lines.push(`Location: ${participant.site}`)
+  if (participant.siteContact?.trim()) {
+    lines.push(`Site contact: ${participant.siteContact.trim()}`)
+  }
   lines.push(`Service: ${participant.service}`)
   lines.push(`Week: ${formatWeekHeading(weekStart)}`)
   lines.push('')
@@ -130,6 +134,10 @@ export function buildParticipantWeekScheduleWriteup(
     if (shift.type === 'coached') {
       lines.push('Type: Coached session')
       lines.push('What to expect: Your coach will be with you for this shift.')
+      if (participant.site) lines.push(`Site: ${participant.site}`)
+      if (participant.siteContact?.trim()) {
+        lines.push(`Site contact: ${participant.siteContact.trim()}`)
+      }
       if (coach) {
         lines.push(`Coach: ${coach.name || 'Unnamed'}`)
         if (coach.phone?.trim()) lines.push(`Coach phone: ${coach.phone.trim()}`)
@@ -139,6 +147,10 @@ export function buildParticipantWeekScheduleWriteup(
     } else {
       lines.push('Type: Solo shift')
       lines.push('What to expect: You will work independently. No coach is scheduled.')
+      if (participant.site) lines.push(`Site: ${participant.site}`)
+      if (participant.siteContact?.trim()) {
+        lines.push(`Site contact: ${participant.siteContact.trim()}`)
+      }
     }
 
     const milestones = milestoneInstructions(
@@ -176,12 +188,14 @@ export function buildCoachWeekScheduleWriteup(
   weekStart: string,
   shifts: Shift[],
   participants: Participant[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): string {
   const participantMap = new Map(participants.map((p) => [p.id, p]))
+  const activityMap = new Map(otherCoachingActivities.map((a) => [a.id, a]))
   const weekShifts = shifts
     .filter(
       (s) =>
-        s.type === 'coached' &&
+        shiftUsesCoach(s) &&
         s.coachId === coach.id &&
         weekDates.includes(s.date),
     )
@@ -199,38 +213,76 @@ export function buildCoachWeekScheduleWriteup(
   lines.push('')
 
   if (weekShifts.length === 0) {
-    lines.push('No coached shifts are scheduled this week.')
+    lines.push('No coached sessions or other coaching assignments are scheduled this week.')
     return lines.join('\n')
   }
 
-  lines.push(
-    `You have ${weekShifts.length} coached session${weekShifts.length === 1 ? '' : 's'} this week:`,
-  )
+  const coachedCount = weekShifts.filter((s) => s.type === 'coached').length
+  const assignmentCount = weekShifts.filter((s) => s.type === 'other-coaching').length
+  const summaryParts: string[] = []
+  if (coachedCount > 0) {
+    summaryParts.push(
+      `${coachedCount} coached session${coachedCount === 1 ? '' : 's'}`,
+    )
+  }
+  if (assignmentCount > 0) {
+    summaryParts.push(
+      `${assignmentCount} other coaching assignment${assignmentCount === 1 ? '' : 's'}`,
+    )
+  }
+  lines.push(`You have ${summaryParts.join(' and ')} this week:`)
   lines.push('')
 
-  let totalHours = 0
+  let coachedHours = 0
+  let otherCoachingHours = 0
+  let sessionNum = 0
+  let assignmentNum = 0
   weekShifts.forEach((shift, index) => {
-    const p = participantMap.get(shift.participantId)
+    const p = shift.participantId ? participantMap.get(shift.participantId) : undefined
     const day = formatDayHeader(shift.date)
     const time = formatMinutesRange(shift.startMinutes, shift.endMinutes)
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
-    totalHours += hours
     const hoursLabel = formatHoursValue(hours)
 
     if (index > 0) lines.push('')
     lines.push(DIVIDER)
-    lines.push(`SESSION ${index + 1} — ${day}`)
-    lines.push(`When: ${time} (${hoursLabel} hour${hoursLabel === '1' ? '' : 's'})`)
-    lines.push(`Participant: ${p?.name || 'Unnamed'}`)
-    if (p?.site) lines.push(`Site: ${p.site}`)
-    if (p?.service) lines.push(`Service: ${p.service}`)
-    if (shift.notes?.trim()) lines.push(`Notes: ${shift.notes.trim()}`)
+    if (shift.type === 'other-coaching') {
+      otherCoachingHours += hours
+      assignmentNum++
+      const activity = shift.otherCoachingActivityId
+        ? activityMap.get(shift.otherCoachingActivityId)
+        : undefined
+      lines.push(`OTHER COACHING ASSIGNMENT ${assignmentNum} — ${day}`)
+      lines.push(`When: ${time} (${hoursLabel} hour${hoursLabel === '1' ? '' : 's'})`)
+      lines.push(`Assignment: ${activity?.name || 'Other coaching'}`)
+      lines.push('Type: Other coaching assignment (not a participant session)')
+      if (activity?.notes) lines.push(`Assignment notes: ${activity.notes}`)
+      if (shift.notes?.trim()) lines.push(`Shift notes: ${shift.notes.trim()}`)
+    } else {
+      coachedHours += hours
+      sessionNum++
+      lines.push(`SESSION ${sessionNum} — ${day}`)
+      lines.push(`When: ${time} (${hoursLabel} hour${hoursLabel === '1' ? '' : 's'})`)
+      lines.push(`Participant: ${p?.name || 'Unnamed'}`)
+      if (p?.site) lines.push(`Site: ${p.site}`)
+      if (p?.siteContact?.trim()) lines.push(`Site contact: ${p.siteContact.trim()}`)
+      if (p?.service) lines.push(`Service: ${p.service}`)
+      if (shift.notes?.trim()) lines.push(`Notes: ${shift.notes.trim()}`)
+    }
   })
 
   lines.push('')
   lines.push(DIVIDER)
   lines.push('WEEKLY TOTALS')
-  lines.push(`Total coached hours this week: ${formatHoursValue(totalHours)}`)
+  if (coachedCount > 0) {
+    lines.push(`Participant coaching hours: ${formatHoursValue(coachedHours)}`)
+  }
+  if (assignmentCount > 0) {
+    lines.push(`Other coaching assignment hours: ${formatHoursValue(otherCoachingHours)}`)
+  }
+  lines.push(
+    `Total hours this week: ${formatHoursValue(coachedHours + otherCoachingHours)}`,
+  )
 
   return lines.join('\n')
 }

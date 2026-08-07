@@ -1,5 +1,5 @@
-import type { AppState, Coach, Participant, Shift } from '../types'
-import { DEFAULT_REGIONS } from '../types'
+import type { AppState, Coach, OtherCoachingActivity, Participant, Shift } from '../types'
+import { DEFAULT_PARTICIPANT_AUTH_NUMBER, DEFAULT_REGIONS, defaultStartingHoursForCategory } from '../types'
 import { pickCoachColor } from './colors'
 import { getDefaultRegionId } from './regions'
 import { defaultAvailability } from './scheduling'
@@ -19,11 +19,14 @@ function createSampleData(): AppState {
       regionId: NORTH,
       name: 'Alex Rivera',
       site: 'Downtown Center',
+      siteContact: '',
       service: 'WA',
       workingHoursPerWeek: 40,
       coachingHoursPerWeek: 20,
       authStart: sampleAuth.authStart,
       authEnd: sampleAuth.authEnd,
+      authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
+      bestAddressForChecks: '',
       notes: '',
     },
     {
@@ -31,11 +34,14 @@ function createSampleData(): AppState {
       regionId: WEST,
       name: 'Jordan Kim',
       site: 'North Campus',
+      siteContact: '',
       service: 'WA',
       workingHoursPerWeek: 30,
       coachingHoursPerWeek: 15,
       authStart: sampleAuth.authStart,
       authEnd: sampleAuth.authEnd,
+      authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
+      bestAddressForChecks: '',
       notes: '',
     },
   ]
@@ -148,6 +154,7 @@ function createSampleData(): AppState {
     selectedRegionId: NORTH,
     participants,
     coaches,
+    otherCoachingActivities: [],
     shifts,
     weekStart,
   }
@@ -181,6 +188,9 @@ export function loadState(): AppState {
           notes: p.notes ?? '',
           authStart: p.authStart?.trim() || defaultAuth.authStart,
           authEnd: p.authEnd?.trim() || defaultAuth.authEnd,
+          authNumber: p.authNumber?.trim() || DEFAULT_PARTICIPANT_AUTH_NUMBER,
+          bestAddressForChecks: p.bestAddressForChecks ?? '',
+          siteContact: p.siteContact ?? '',
         })),
         coaches: parsed.coaches.map((c, i) => ({
           ...c,
@@ -189,6 +199,7 @@ export function loadState(): AppState {
           phone: c.phone ?? '',
           notes: c.notes ?? '',
         })),
+        otherCoachingActivities: parsed.otherCoachingActivities ?? [],
       }
     }
   } catch {
@@ -208,11 +219,14 @@ export function createEmptyParticipant(regionId: string): Participant {
     regionId,
     name: '',
     site: '',
+    siteContact: '',
     service: 'WA',
     workingHoursPerWeek: 40,
     coachingHoursPerWeek: 20,
     authStart,
     authEnd,
+    authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
+    bestAddressForChecks: '',
     notes: '',
   }
 }
@@ -227,6 +241,39 @@ export function createEmptyCoach(colorIndex = 0, regionId: string): Coach {
     notes: '',
     color: pickCoachColor(colorIndex),
     availability: defaultAvailability(),
+  }
+}
+
+export function createEmptyOtherCoachingActivity(
+  regionId: string,
+  coachId = '',
+): OtherCoachingActivity {
+  return {
+    id: generateId(),
+    regionId,
+    name: 'Office Time',
+    notes: '',
+    hoursPerWeek: defaultStartingHoursForCategory('Office Time'),
+    shiftsPerWeek: 1,
+    coachId,
+  }
+}
+
+export function createOtherCoachingShift(
+  activityId: string,
+  coachId: string,
+  date: string,
+  startMinutes: number,
+  endMinutes: number,
+): Shift {
+  return {
+    id: generateId(),
+    otherCoachingActivityId: activityId,
+    coachId,
+    date,
+    startMinutes,
+    endMinutes,
+    type: 'other-coaching',
   }
 }
 

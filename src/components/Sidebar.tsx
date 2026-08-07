@@ -4,6 +4,7 @@ import {
   formatHoursValue,
   getCoachHoursSummary,
   getCoachSidebarIssueMessages,
+  getOtherCoachingHoursForWeek,
   getParticipantFullyScheduledMessage,
   getParticipantHoursForWeek,
   getParticipantHoursTotal,
@@ -11,23 +12,29 @@ import {
   isParticipantFullyScheduled,
   participantHasAuthIssue,
   participantHasHoursIssue,
+  participantWeekViewVisibilityRules,
 } from '../lib/scheduling'
 import { formatAuthRange, getWeekDates } from '../lib/time'
-import { filterCoachesByRegion, filterParticipantsForWeekView } from '../lib/regions'
-import type { Coach, Participant } from '../types'
+import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsForWeekView } from '../lib/regions'
+import type { Coach, OtherCoachingActivity, Participant } from '../types'
 import { CoachModal } from './CoachModal'
 import { ChevronIcon } from './ChevronIcon'
 import { EyeIcon } from './EyeIcon'
+import { OtherCoachingModal } from './OtherCoachingModal'
 import { ParticipantModal } from './ParticipantModal'
 import { ShiftIcon } from './ShiftIcon'
 
 interface SidebarProps {
   selectedParticipantId: string
   onSelectParticipant: (id: string) => void
+  selectedOtherCoachingId: string
+  onSelectOtherCoaching: (id: string) => void
   visibleCoachIds: Set<string>
   onToggleCoachVisibility: (coachId: string) => void
   visibleCoachShiftIds: Set<string>
   onToggleCoachShiftVisibility: (coachId: string) => void
+  visibleOtherCoachingIds: Set<string>
+  onToggleOtherCoachingVisibility: (id: string) => void
   visibleParticipantIds: Set<string>
   onToggleParticipantVisibility: (participantId: string) => void
 }
@@ -348,20 +355,107 @@ function ParticipantRow({
   )
 }
 
+function OtherCoachingRow({
+  activity,
+  coachName,
+  weekDates,
+  selected,
+  visible,
+  onSelect,
+  onToggleVisibility,
+  onEdit,
+}: {
+  activity: OtherCoachingActivity
+  coachName: string
+  weekDates: string[]
+  selected: boolean
+  visible: boolean
+  onSelect: () => void
+  onToggleVisibility: () => void
+  onEdit: (e: React.MouseEvent) => void
+}) {
+  const { state } = useStore()
+  const weekHours = getOtherCoachingHoursForWeek(activity.id, weekDates, state.shifts)
+  const weekShifts = state.shifts.filter(
+    (s) =>
+      s.type === 'other-coaching' &&
+      s.otherCoachingActivityId === activity.id &&
+      weekDates.includes(s.date),
+  ).length
+
+  const rowClass = selected
+    ? 'border-teal-500/50 bg-teal-950/40'
+    : 'border-transparent hover:bg-slate-800/60'
+
+  return (
+    <div
+      className={`group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-0.5 rounded-md border px-2 py-2 ${rowClass}`}
+    >
+      <button onClick={onSelect} className="min-w-0 overflow-hidden text-left">
+        <div className="truncate text-sm font-medium text-slate-100">{activity.name}</div>
+        <div className="truncate text-[10px] leading-snug text-slate-500">
+          {coachName || 'No coach assigned'}
+        </div>
+        <div className="mt-0.5 text-[10px] tabular-nums text-slate-400">
+          {formatHoursValue(activity.hoursPerWeek)}h starting
+          {weekShifts > 0
+            ? ` · ${formatHoursValue(weekHours)}h on calendar this week`
+            : ' · not scheduled this week'}
+        </div>
+        {activity.notes && (
+          <div className="mt-0.5 truncate text-[10px] text-slate-500">{activity.notes}</div>
+        )}
+      </button>
+      <div className="flex shrink-0 items-start">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleVisibility()
+          }}
+          title={visible ? 'Hide shifts on calendar' : 'Show shifts on calendar'}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors ${
+            visible ? 'text-blue-400 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-700 hover:text-slate-400'
+          }`}
+        >
+          <EyeIcon visible={visible} />
+        </button>
+        <button
+          onClick={onEdit}
+          title="Edit other coaching assignment"
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-700 hover:text-slate-300 ${
+            selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          ✎
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function Sidebar({
   selectedParticipantId,
   onSelectParticipant,
+  selectedOtherCoachingId,
+  onSelectOtherCoaching,
   visibleCoachIds,
   onToggleCoachVisibility,
   visibleCoachShiftIds,
   onToggleCoachShiftVisibility,
+  visibleOtherCoachingIds,
+  onToggleOtherCoachingVisibility,
   visibleParticipantIds,
   onToggleParticipantVisibility,
 }: SidebarProps) {
-  const { state, addCoach, addParticipant, setSelectedRegionId, addRegion } = useStore()
+  const { state, addCoach, addParticipant, addOtherCoachingActivity, setSelectedRegionId, addRegion } =
+    useStore()
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null)
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null)
+  const [editingOtherCoaching, setEditingOtherCoaching] = useState<OtherCoachingActivity | null>(
+    null,
+  )
   const [isNewParticipant, setIsNewParticipant] = useState(false)
+  const [isNewOtherCoaching, setIsNewOtherCoaching] = useState(false)
   const [addingRegion, setAddingRegion] = useState(false)
   const [newRegionName, setNewRegionName] = useState('')
 
@@ -379,6 +473,20 @@ export function Sidebar({
         state.weekStart,
       ),
     [state.participants, state.selectedRegionId, state.shifts, state.weekStart],
+  )
+  const regionOtherCoaching = useMemo(
+    () =>
+      filterOtherCoachingForWeekView(
+        state.otherCoachingActivities,
+        state.selectedRegionId,
+        state.shifts,
+        state.weekStart,
+      ),
+    [state.otherCoachingActivities, state.selectedRegionId, state.shifts, state.weekStart],
+  )
+  const coachNameById = useMemo(
+    () => new Map(regionCoaches.map((c) => [c.id, c.name || 'Unnamed'])),
+    [regionCoaches],
   )
 
   const submitNewRegion = () => {
@@ -475,6 +583,54 @@ export function Sidebar({
           </div>
         </div>
 
+        <div className="shrink-0 border-b border-slate-800 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Other Coaching Assignments
+            </h2>
+            <button
+              onClick={() => {
+                const activity = addOtherCoachingActivity()
+                setIsNewOtherCoaching(true)
+                setEditingOtherCoaching(activity)
+                onSelectOtherCoaching(activity.id)
+                onSelectParticipant('')
+              }}
+              className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
+            >
+              + Add
+            </button>
+          </div>
+          <div className="max-h-40 space-y-0.5 overflow-y-auto">
+            {regionOtherCoaching.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-slate-600">
+                Add office time, training, vacation, and other coach assignments.
+              </p>
+            ) : (
+              regionOtherCoaching.map((activity) => (
+                <OtherCoachingRow
+                  key={activity.id}
+                  activity={activity}
+                  coachName={coachNameById.get(activity.coachId) ?? ''}
+                  weekDates={weekDates}
+                  selected={activity.id === selectedOtherCoachingId}
+                  visible={visibleOtherCoachingIds.has(activity.id)}
+                  onSelect={() => {
+                    onSelectOtherCoaching(activity.id)
+                    onSelectParticipant('')
+                  }}
+                  onToggleVisibility={() => onToggleOtherCoachingVisibility(activity.id)}
+                  onEdit={(e) => {
+                    e.stopPropagation()
+                    setIsNewOtherCoaching(false)
+                    setEditingOtherCoaching(activity)
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </div>
+
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <div className="mb-2 flex shrink-0 items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -486,6 +642,7 @@ export function Sidebar({
                 setIsNewParticipant(true)
                 setEditingParticipant(p)
                 onSelectParticipant(p.id)
+                onSelectOtherCoaching('')
               }}
               className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
             >
@@ -495,9 +652,17 @@ export function Sidebar({
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-0.5">
               {regionParticipants.length === 0 ? (
-                <p className="px-2 py-3 text-xs text-slate-600">
-                  No active participants for this week
-                </p>
+                <div className="space-y-2 px-2 py-3 text-xs leading-relaxed text-slate-300">
+                  <p>No active participants for this week.</p>
+                  <p>
+                    Participants in this region appear here when any of these rules are met:
+                  </p>
+                  <ul className="list-disc space-y-1 pl-4">
+                    {participantWeekViewVisibilityRules().map((rule) => (
+                      <li key={rule}>{rule}</li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
                 regionParticipants.map((p) => (
                   <ParticipantRow
@@ -506,7 +671,10 @@ export function Sidebar({
                     weekDates={weekDates}
                     selected={p.id === selectedParticipantId}
                     visible={visibleParticipantIds.has(p.id)}
-                    onSelect={() => onSelectParticipant(p.id)}
+                    onSelect={() => {
+                      onSelectParticipant(p.id)
+                      onSelectOtherCoaching('')
+                    }}
                     onToggleVisibility={() => onToggleParticipantVisibility(p.id)}
                     onEdit={(e) => {
                       e.stopPropagation()
@@ -531,6 +699,16 @@ export function Sidebar({
           onClose={() => {
             setEditingParticipant(null)
             setIsNewParticipant(false)
+          }}
+        />
+      )}
+      {editingOtherCoaching && (
+        <OtherCoachingModal
+          activity={editingOtherCoaching}
+          isNew={isNewOtherCoaching}
+          onClose={() => {
+            setEditingOtherCoaching(null)
+            setIsNewOtherCoaching(false)
           }}
         />
       )}

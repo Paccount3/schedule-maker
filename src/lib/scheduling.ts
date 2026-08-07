@@ -52,6 +52,42 @@ export function formatShiftConflictSummary(conflicts: ShiftConflict[]): string |
   return conflicts.map((c) => c.message).join('\n')
 }
 
+export function shiftUsesCoach(shift: Shift): boolean {
+  return (
+    (shift.type === 'coached' || shift.type === 'other-coaching') && !!shift.coachId
+  )
+}
+
+export function getOtherCoachingHoursForWeek(
+  activityId: string,
+  weekDates: string[],
+  shifts: Shift[],
+  excludeShiftId?: string,
+): number {
+  return shifts
+    .filter(
+      (s) =>
+        s.id !== excludeShiftId &&
+        s.type === 'other-coaching' &&
+        s.otherCoachingActivityId === activityId &&
+        weekDates.includes(s.date),
+    )
+    .reduce((sum, s) => sum + durationHours(s.startMinutes, s.endMinutes), 0)
+}
+
+/** Whether an assignment should appear in the sidebar for the viewed calendar week */
+export function isOtherCoachingRelevantForWeek(
+  activityId: string,
+  shifts: Shift[],
+  weekDates: string[],
+): boolean {
+  const activityShifts = shifts.filter(
+    (s) => s.type === 'other-coaching' && s.otherCoachingActivityId === activityId,
+  )
+  if (activityShifts.length === 0) return true
+  return activityShifts.some((s) => weekDates.includes(s.date))
+}
+
 export function participantHasShiftOnDate(
   participantId: string,
   date: string,
@@ -73,7 +109,7 @@ export function getShiftConflicts(
 ): ShiftConflict[] {
   const conflicts: ShiftConflict[] = []
 
-  if (participant) {
+  if (participant && shift.participantId) {
     if (shift.date < participant.authStart || shift.date > participant.authEnd) {
       conflicts.push({
         type: 'outside_auth',
@@ -106,7 +142,7 @@ export function getShiftConflicts(
     }
   }
 
-  if (shift.type === 'coached' && shift.coachId && coach) {
+  if (shiftUsesCoach(shift) && shift.coachId && coach) {
     const avail = coach.availability[dayOfWeek]
     if (!avail) {
       conflicts.push({
@@ -252,6 +288,16 @@ export function isCoachingOnlyParticipant(participant: Participant): boolean {
 
 /** Weeks ahead of the viewed week to show participants whose authorization has not started yet */
 export const PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS = 2
+
+/** User-facing rules for when a participant appears in the sidebar week view */
+export function participantWeekViewVisibilityRules(): string[] {
+  return [
+    'Their authorization overlaps the week you are viewing',
+    'They have at least one shift scheduled this week',
+    'Their working or coaching hours are not fully scheduled yet',
+    `Their authorization starts within the next ${PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS} weeks`,
+  ]
+}
 
 export function isParticipantHoursComplete(
   participant: Participant,
@@ -458,13 +504,14 @@ export function getCoachSidebarIssueMessages(
 
   const participantMap = new Map(participants.map((p) => [p.id, p]))
   const coachShifts = shifts.filter(
-    (s) =>
-      s.coachId === coach.id && s.type === 'coached' && weekDates.includes(s.date),
+    (s) => s.coachId === coach.id && shiftUsesCoach(s) && weekDates.includes(s.date),
   )
 
   for (const shift of coachShifts) {
     const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
-    const participant = participantMap.get(shift.participantId)
+    const participant = shift.participantId
+      ? participantMap.get(shift.participantId)
+      : undefined
     const conflicts = getShiftConflicts(
       shift,
       participant,
@@ -505,7 +552,7 @@ export function getCoachHoursForWeek(
       (s) =>
         s.id !== excludeShiftId &&
         s.coachId === coachId &&
-        s.type === 'coached' &&
+        shiftUsesCoach(s) &&
         weekDates.includes(s.date),
     )
     .reduce((sum, s) => sum + durationHours(s.startMinutes, s.endMinutes), 0)
@@ -606,6 +653,20 @@ export function buildCopiedShiftsFromPreviousWeek(
     if (!prevWeek.includes(shift.date)) continue
 
     const newDate = dateMap.get(shift.date)!
+    if (shift.type === 'other-coaching' && shift.otherCoachingActivityId) {
+      copied.push({
+        otherCoachingActivityId: shift.otherCoachingActivityId,
+        date: newDate,
+        startMinutes: shift.startMinutes,
+        endMinutes: shift.endMinutes,
+        type: shift.type,
+        coachId: shift.coachId,
+        notes: shift.notes,
+      })
+      continue
+    }
+
+    if (!shift.participantId) continue
     const participant = participants.find((p) => p.id === shift.participantId)
     if (!participant) continue
 

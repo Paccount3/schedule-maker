@@ -47,11 +47,14 @@ export interface Participant {
   regionId: string
   name: string
   site: string
+  siteContact: string
   service: ParticipantService
   workingHoursPerWeek: number
   coachingHoursPerWeek: number
   authStart: string
   authEnd: string
+  authNumber: string
+  bestAddressForChecks: string
   notes: string
 }
 
@@ -78,7 +81,59 @@ export const PARTICIPANT_SERVICES: ParticipantService[] = [
 
 export const PARTICIPANT_NOTES_MAX = 30
 
+export const PARTICIPANT_CHECK_ADDRESS_MAX = 100
+
+export const PARTICIPANT_AUTH_NUMBER_LENGTH = 11
+
+export const DEFAULT_PARTICIPANT_AUTH_NUMBER = '00000000000'
+
 export const COACH_NOTES_MAX = 30
+
+export type OtherCoachingCategory =
+  | 'Office Time'
+  | 'Report Writing'
+  | 'Training'
+  | 'Shadowing'
+  | 'Vacation'
+  | 'Sick Time'
+  | 'Other'
+
+export const OTHER_COACHING_CATEGORIES: OtherCoachingCategory[] = [
+  'Office Time',
+  'Report Writing',
+  'Training',
+  'Shadowing',
+  'Vacation',
+  'Sick Time',
+  'Other',
+]
+
+export const OTHER_COACHING_NOTES_MAX = 30
+
+/** Default starting hours when an assignment type is selected */
+export const OTHER_COACHING_DEFAULT_HOURS: Record<OtherCoachingCategory, number> = {
+  'Office Time': 2,
+  'Report Writing': 2,
+  Training: 4,
+  Shadowing: 4,
+  Vacation: 8,
+  'Sick Time': 8,
+  Other: 2,
+}
+
+export function defaultStartingHoursForCategory(category: OtherCoachingCategory): number {
+  return OTHER_COACHING_DEFAULT_HOURS[category]
+}
+
+export interface OtherCoachingActivity {
+  id: string
+  regionId: string
+  name: OtherCoachingCategory
+  notes: string
+  hoursPerWeek: number
+  shiftsPerWeek: number
+  coachId: string
+}
 
 export interface Coach {
   id: string
@@ -91,11 +146,12 @@ export interface Coach {
   availability: Partial<Record<DayOfWeek, TimeRange | null>>
 }
 
-export type ShiftType = 'solo' | 'coached'
+export type ShiftType = 'solo' | 'coached' | 'other-coaching'
 
 export interface Shift {
   id: string
-  participantId: string
+  participantId?: string
+  otherCoachingActivityId?: string
   date: string
   startMinutes: number
   endMinutes: number
@@ -109,6 +165,7 @@ export interface AppState {
   selectedRegionId: string
   participants: Participant[]
   coaches: Coach[]
+  otherCoachingActivities: OtherCoachingActivity[]
   shifts: Shift[]
   weekStart: string
 }

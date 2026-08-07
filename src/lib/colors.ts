@@ -38,6 +38,18 @@ export function coachShiftStyle(color: string): { backgroundColor: string; borde
   }
 }
 
+export function otherCoachingShiftStyle(): {
+  backgroundColor: string
+  borderColor: string
+  color: string
+} {
+  return {
+    backgroundColor: hexToRgba('#14b8a6', 0.28),
+    borderColor: '#14b8a6',
+    color: '#ecfdf5',
+  }
+}
+
 export function soloShiftStyle(): { backgroundColor: string; borderColor: string; color: string } {
   return {
     backgroundColor: hexToRgba('#64748b', 0.35),

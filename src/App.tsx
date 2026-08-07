@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore'
-import { filterCoachesByRegion, filterParticipantsByRegion, filterParticipantsForWeekView } from './lib/regions'
+import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView } from './lib/regions'
 import { isParticipantFullyScheduled } from './lib/scheduling'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
@@ -59,14 +59,26 @@ export default function App() {
     () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
     [state.coaches, state.selectedRegionId],
   )
+  const regionOtherCoaching = useMemo(
+    () =>
+      filterOtherCoachingForWeekView(
+        state.otherCoachingActivities,
+        state.selectedRegionId,
+        state.shifts,
+        state.weekStart,
+      ),
+    [state.otherCoachingActivities, state.selectedRegionId, state.shifts, state.weekStart],
+  )
 
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>(
     () => regionParticipants[0]?.id ?? '',
   )
+  const [selectedOtherCoachingId, setSelectedOtherCoachingId] = useState('')
   const [visibleCoachIds, setVisibleCoachIds] = useState<Set<string>>(() => new Set())
   const [visibleCoachShiftIds, setVisibleCoachShiftIds] = useState<Set<string>>(
     () => new Set(regionCoaches.map((c) => c.id)),
   )
+  const [visibleOtherCoachingIds, setVisibleOtherCoachingIds] = useState<Set<string>>(() => new Set())
   const [visibleParticipantIds, setVisibleParticipantIds] = useState<Set<string>>(
     () => new Set(regionParticipants.map((p) => p.id)),
   )
@@ -101,6 +113,17 @@ export default function App() {
   }, [regionParticipants])
 
   useEffect(() => {
+    setVisibleOtherCoachingIds((prev) => {
+      const next = new Set<string>()
+      for (const activity of regionOtherCoaching) {
+        if (prev.has(activity.id)) next.add(activity.id)
+        else next.add(activity.id)
+      }
+      return next
+    })
+  }, [regionOtherCoaching])
+
+  useEffect(() => {
     if (regionParticipants.length === 0) {
       setSelectedParticipantId('')
       return
@@ -111,10 +134,28 @@ export default function App() {
     }
   }, [regionParticipants, selectedParticipantId])
 
+  useEffect(() => {
+    if (selectedOtherCoachingId && !regionOtherCoaching.some((a) => a.id === selectedOtherCoachingId)) {
+      setSelectedOtherCoachingId('')
+    }
+  }, [regionOtherCoaching, selectedOtherCoachingId])
+
   const validSelection =
     regionParticipants.find((p) => p.id === selectedParticipantId)?.id ??
     regionParticipants[0]?.id ??
     ''
+  const validOtherCoachingSelection =
+    regionOtherCoaching.find((a) => a.id === selectedOtherCoachingId)?.id ?? ''
+
+  const selectParticipant = (id: string) => {
+    setSelectedParticipantId(id)
+    if (id) setSelectedOtherCoachingId('')
+  }
+
+  const selectOtherCoaching = (id: string) => {
+    setSelectedOtherCoachingId(id)
+    if (id) setSelectedParticipantId('')
+  }
 
   const toggleCoachVisibility = (coachId: string) => {
     setVisibleCoachIds((prev) => {
@@ -130,6 +171,15 @@ export default function App() {
       const next = new Set(prev)
       if (next.has(coachId)) next.delete(coachId)
       else next.add(coachId)
+      return next
+    })
+  }
+
+  const toggleOtherCoachingVisibility = (activityId: string) => {
+    setVisibleOtherCoachingIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(activityId)) next.delete(activityId)
+      else next.add(activityId)
       return next
     })
   }
@@ -164,19 +214,25 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         <Sidebar
           selectedParticipantId={validSelection}
-          onSelectParticipant={setSelectedParticipantId}
+          onSelectParticipant={selectParticipant}
+          selectedOtherCoachingId={validOtherCoachingSelection}
+          onSelectOtherCoaching={selectOtherCoaching}
           visibleCoachIds={visibleCoachIds}
           onToggleCoachVisibility={toggleCoachVisibility}
           visibleCoachShiftIds={visibleCoachShiftIds}
           onToggleCoachShiftVisibility={toggleCoachShiftVisibility}
+          visibleOtherCoachingIds={visibleOtherCoachingIds}
+          onToggleOtherCoachingVisibility={toggleOtherCoachingVisibility}
           visibleParticipantIds={visibleParticipantIds}
           onToggleParticipantVisibility={toggleParticipantVisibility}
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-950 p-4">
           <WeekScheduler
             selectedParticipantId={validSelection}
+            selectedOtherCoachingId={validOtherCoachingSelection}
             visibleCoachIds={visibleCoachIds}
             visibleCoachShiftIds={visibleCoachShiftIds}
+            visibleOtherCoachingIds={visibleOtherCoachingIds}
             visibleParticipantIds={visibleParticipantIds}
           />
         </div>

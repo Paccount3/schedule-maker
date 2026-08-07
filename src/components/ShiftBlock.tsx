@@ -29,6 +29,7 @@ interface ShiftBlockProps {
   accentColor: string
   coachName?: string
   isCoached: boolean
+  isOtherCoaching?: boolean
   isSelected: boolean
   isDragging: boolean
   errorLevel?: ShiftErrorLevel
@@ -54,6 +55,7 @@ export function ShiftBlock({
   accentColor,
   coachName,
   isCoached,
+  isOtherCoaching = false,
   isSelected,
   isDragging,
   errorLevel = 'none',
@@ -224,7 +226,11 @@ export function ShiftBlock({
           {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
         </div>
         <div className="truncate opacity-80" style={{ fontSize: `${subFontSize}px` }}>
-          {isCoached && coachName ? coachName : 'NO COACH'}
+          {isOtherCoaching
+            ? coachName || 'NO COACH'
+            : isCoached && coachName
+              ? coachName
+              : 'NO COACH'}
         </div>
         {site && (
           <div

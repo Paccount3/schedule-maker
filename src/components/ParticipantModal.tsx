@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Participant, ParticipantService } from '../types'
-import { PARTICIPANT_NOTES_MAX, PARTICIPANT_SERVICES } from '../types'
+import {
+  PARTICIPANT_AUTH_NUMBER_LENGTH,
+  PARTICIPANT_CHECK_ADDRESS_MAX,
+  PARTICIPANT_NOTES_MAX,
+  PARTICIPANT_SERVICES,
+  DEFAULT_PARTICIPANT_AUTH_NUMBER,
+} from '../types'
 import { useStore } from '../store/useStore'
 import { hexToRgba } from '../lib/colors'
 import { filterCoachesByRegion } from '../lib/regions'
@@ -24,6 +30,7 @@ import {
   weekStartForDate,
 } from '../lib/time'
 import { Modal } from './Modal'
+import { CalendarScheduleHint } from './CalendarScheduleHint'
 import { DateSelect } from './DateSelect'
 import { AddressAutocomplete } from './AddressAutocomplete'
 
@@ -56,6 +63,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     site?: string
     authStart?: string
     authEnd?: string
+    authNumber?: string
   }>({})
 
   const coachingOnly = isCoachingOnlyParticipant(participant)
@@ -121,6 +129,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
 
   const selectedSlots = suggestedSlots.filter((s) => selectedSlotIds.has(s.id))
   const plannedHours = selectedSlots.length * shiftDurationHours
+  const willScheduleOnSave = planShifts && selectedSlots.length > 0 && !!selectedCoach
 
   const save = () => {
     const errors: {
@@ -128,11 +137,18 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
       site?: string
       authStart?: string
       authEnd?: string
+      authNumber?: string
     } = {}
     if (!participant.name.trim()) errors.name = 'Name is required'
     if (!participant.site.trim()) errors.site = 'Work site is required'
     if (!participant.authStart?.trim()) errors.authStart = 'Authorization start is required'
     if (!participant.authEnd?.trim()) errors.authEnd = 'Authorization end is required'
+    const authNumber = participant.authNumber?.trim() ?? ''
+    if (!authNumber) {
+      errors.authNumber = 'Authorization number is required'
+    } else if (authNumber.length !== PARTICIPANT_AUTH_NUMBER_LENGTH) {
+      errors.authNumber = `Authorization number must be exactly ${PARTICIPANT_AUTH_NUMBER_LENGTH} characters`
+    }
     if (
       participant.authStart?.trim() &&
       participant.authEnd?.trim() &&
@@ -257,7 +273,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
               onClick={save}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
             >
-              {isNew && planShifts && selectedSlots.length > 0
+              {isNew && willScheduleOnSave
                 ? `Save & schedule ${selectedSlots.length} shift${selectedSlots.length !== 1 ? 's' : ''}`
                 : 'Save'}
             </button>
@@ -330,6 +346,17 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
               <span className="mt-1 block text-xs text-red-400">{fieldErrors.site}</span>
             )}
           </label>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-400">Site Contact</span>
+            <input
+              className={`${inputClass} mt-1`}
+              placeholder="Contact name at site"
+              value={participant.siteContact}
+              onChange={(e) =>
+                setParticipant({ ...participant, siteContact: e.target.value })
+              }
+            />
+          </label>
           {!coachingOnly && (
             <label className="block">
               <span className="text-xs font-medium text-slate-400">Working Hours / Week</span>
@@ -398,6 +425,46 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
             )}
             <span className="mt-1 block text-[10px] text-slate-500">
               Default authorization period is 90 days.
+            </span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-400">
+              Authorization Number <span className="text-red-400">*</span>
+            </span>
+            <input
+              className={`${inputClass} mt-1 font-mono tracking-wider ${fieldErrors.authNumber ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+              placeholder={DEFAULT_PARTICIPANT_AUTH_NUMBER}
+              value={participant.authNumber}
+              maxLength={PARTICIPANT_AUTH_NUMBER_LENGTH}
+              onChange={(e) => {
+                setFieldErrors((prev) => ({ ...prev, authNumber: undefined }))
+                setParticipant({ ...participant, authNumber: e.target.value })
+              }}
+            />
+            {fieldErrors.authNumber && (
+              <span className="mt-1 block text-xs text-red-400">{fieldErrors.authNumber}</span>
+            )}
+            <span className="mt-1 block text-[10px] text-slate-500">
+              {PARTICIPANT_AUTH_NUMBER_LENGTH} characters · default {DEFAULT_PARTICIPANT_AUTH_NUMBER}
+            </span>
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-400">Best Address for Checks</span>
+            <textarea
+              className={`${inputClass} mt-1 min-h-[3.25rem] resize-y`}
+              placeholder="Street address, city, state, ZIP"
+              rows={2}
+              maxLength={PARTICIPANT_CHECK_ADDRESS_MAX}
+              value={participant.bestAddressForChecks}
+              onChange={(e) =>
+                setParticipant({
+                  ...participant,
+                  bestAddressForChecks: e.target.value.slice(0, PARTICIPANT_CHECK_ADDRESS_MAX),
+                })
+              }
+            />
+            <span className="mt-0.5 block text-[10px] tabular-nums text-slate-500">
+              {participant.bestAddressForChecks.length}/{PARTICIPANT_CHECK_ADDRESS_MAX}
             </span>
           </label>
         </div>
@@ -666,6 +733,8 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
             {participant.notes.length}/{PARTICIPANT_NOTES_MAX}
           </span>
         </label>
+
+        {!willScheduleOnSave && <CalendarScheduleHint />}
       </div>
     </Modal>
   )

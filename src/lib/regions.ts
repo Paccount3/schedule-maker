@@ -1,6 +1,6 @@
-import type { Coach, Participant, Region, Shift } from '../types'
+import type { Coach, OtherCoachingActivity, Participant, Region, Shift } from '../types'
 import { DEFAULT_REGIONS } from '../types'
-import { isParticipantRelevantForWeek } from './scheduling'
+import { isOtherCoachingRelevantForWeek, isParticipantRelevantForWeek } from './scheduling'
 import { getWeekDates } from './time'
 
 export function regionIdFromName(name: string, existingIds: Set<string>): string {
@@ -42,6 +42,26 @@ export function filterParticipantsForWeekView(
   )
 }
 
+export function filterOtherCoachingByRegion(
+  activities: OtherCoachingActivity[],
+  regionId: string,
+): OtherCoachingActivity[] {
+  return activities.filter((a) => a.regionId === regionId)
+}
+
+/** Region assignments visible for the viewed week (scheduled this week or not yet on calendar) */
+export function filterOtherCoachingForWeekView(
+  activities: OtherCoachingActivity[],
+  regionId: string,
+  shifts: Shift[],
+  weekStart: string,
+): OtherCoachingActivity[] {
+  const weekDates = getWeekDates(weekStart)
+  return filterOtherCoachingByRegion(activities, regionId).filter((a) =>
+    isOtherCoachingRelevantForWeek(a.id, shifts, weekDates),
+  )
+}
+
 export function filterCoachesByRegion(coaches: Coach[], regionId: string): Coach[] {
   return coaches.filter((c) => c.regionId === regionId)
 }
@@ -50,11 +70,19 @@ export function filterShiftsByRegion(
   shifts: Shift[],
   participants: Participant[],
   regionId: string,
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): Shift[] {
   const participantIds = new Set(
     filterParticipantsByRegion(participants, regionId).map((p) => p.id),
   )
-  return shifts.filter((s) => participantIds.has(s.participantId))
+  const activityIds = new Set(
+    filterOtherCoachingByRegion(otherCoachingActivities, regionId).map((a) => a.id),
+  )
+  return shifts.filter(
+    (s) =>
+      (s.participantId && participantIds.has(s.participantId)) ||
+      (s.otherCoachingActivityId && activityIds.has(s.otherCoachingActivityId)),
+  )
 }
 
 export function regionName(regions: Region[], regionId: string): string {

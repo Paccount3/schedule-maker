@@ -185,6 +185,18 @@ export const CALENDAR_VIEW_START = 8 * 60
 export const CALENDAR_VIEW_END = 21 * 60
 export const SLOT_MINUTES = 30
 
+/** End time for a calendar block from a starting hour length (e.g. assignment starting hours). */
+export function endMinutesFromStartingHours(
+  startMinutes: number,
+  startingHours: number,
+): number {
+  const durationMinutes = Math.max(
+    SLOT_MINUTES,
+    Math.round(Math.max(0, startingHours) * 60),
+  )
+  return Math.min(startMinutes + durationMinutes, CALENDAR_VIEW_END)
+}
+
 export function snapMinutesFromGridY(
   yPx: number,
   hourHeight: number,

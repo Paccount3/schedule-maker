@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Shift, ShiftType } from '../types'
+import type { OtherCoachingActivity, Shift, ShiftType } from '../types'
 import { useStore } from '../store/useStore'
 import { hexToRgba } from '../lib/colors'
 import {
@@ -31,18 +31,37 @@ import { TimeSelect } from './TimeSelect'
 const inputClass =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
 
+function otherCoachingShiftWithActivityCoach(
+  shift: Shift,
+  activities: OtherCoachingActivity[],
+): Shift {
+  if (shift.type !== 'other-coaching' || shift.coachId || !shift.otherCoachingActivityId) {
+    return shift
+  }
+  const activity = activities.find((a) => a.id === shift.otherCoachingActivityId)
+  return activity?.coachId ? { ...shift, coachId: activity.coachId } : shift
+}
+
 export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, onDelete }: ShiftEditorProps) {
   const { state, updateShift, removeShift } = useStore()
-  const [shift, setShift] = useState(initialShift)
+  const [shift, setShift] = useState(() =>
+    otherCoachingShiftWithActivityCoach(initialShift, state.otherCoachingActivities),
+  )
 
   useEffect(() => {
-    setShift(initialShift)
-  }, [initialShift])
+    setShift(otherCoachingShiftWithActivityCoach(initialShift, state.otherCoachingActivities))
+  }, [initialShift, state.otherCoachingActivities])
 
-  const participant = state.participants.find((p) => p.id === shift.participantId)
-  const regionCoaches = participant
-    ? state.coaches.filter((c) => c.regionId === participant.regionId)
-    : []
+  const participant = shift.participantId
+    ? state.participants.find((p) => p.id === shift.participantId)
+    : undefined
+  const activity = shift.otherCoachingActivityId
+    ? state.otherCoachingActivities.find((a) => a.id === shift.otherCoachingActivityId)
+    : undefined
+  const isOtherCoaching = shift.type === 'other-coaching'
+  const regionCoaches = state.coaches.filter(
+    (c) => c.regionId === (participant?.regionId ?? activity?.regionId ?? state.selectedRegionId),
+  )
   const coach = shift.coachId ? regionCoaches.find((c) => c.id === shift.coachId) : undefined
   const dayOfWeek = dayOfWeekFromDate(parseDateInput(shift.date))
 
@@ -54,12 +73,13 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
     dayOfWeek,
     weekDates,
   )
-  const milestoneLabels = participant
-    ? getShiftMilestoneLabels(participant, shift.id, state.shifts)
-    : []
+  const milestoneLabels =
+    participant && !isOtherCoaching
+      ? getShiftMilestoneLabels(participant, shift.id, state.shifts)
+      : []
 
   const availableCoaches =
-    shift.type === 'coached'
+    shift.type === 'coached' || shift.type === 'other-coaching'
       ? getAvailableCoaches(
           regionCoaches,
           dayOfWeek,
@@ -75,7 +95,11 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
   const hours = durationHours(shift.startMinutes, shift.endMinutes)
 
   const save = () => {
-    updateShift(shift)
+    const resolved =
+      isOtherCoaching && activity?.coachId && !shift.coachId
+        ? { ...shift, coachId: activity.coachId }
+        : shift
+    updateShift(resolved)
     onClose()
   }
 
@@ -102,10 +126,14 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-xl">
         <div className="border-b border-slate-800 px-5 py-4">
-          <h3 className="text-lg font-semibold text-slate-100">Edit Shift</h3>
+          <h3 className="text-lg font-semibold text-slate-100">
+            {isOtherCoaching ? 'Edit Other Coaching Assignment' : 'Edit Shift'}
+          </h3>
           <p className="text-sm text-slate-400">
-            {participant?.name || 'Participant'} · {hours}h ·{' '}
-            {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
+            {isOtherCoaching
+              ? activity?.name || 'Other coaching'
+              : participant?.name || 'Participant'}{' '}
+            · {hours}h · {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
           </p>
         </div>
 
@@ -146,6 +174,7 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
             </label>
           </div>
 
+          {!isOtherCoaching && (
           <div>
             <span className="text-xs font-medium text-slate-400">Shift Type</span>
             <div className="mt-1 flex gap-2">
@@ -171,10 +200,18 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
               </button>
             </div>
           </div>
+          )}
 
-          {shift.type === 'coached' && (
+          {(shift.type === 'coached' || isOtherCoaching) && (
             <div>
-              <span className="text-xs font-medium text-slate-400">Coach</span>
+              <span className="text-xs font-medium text-slate-400">
+                Coach
+                {isOtherCoaching && activity?.coachId && (
+                  <span className="ml-1 font-normal text-slate-500">
+                    · changes apply to this assignment and all its shifts
+                  </span>
+                )}
+              </span>
               <div className="mt-1 space-y-1">
                 {regionCoaches.length === 0 ? (
                   <p className="text-sm text-amber-400">Add coaches in this region first.</p>
@@ -185,7 +222,8 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
                     const available = slot?.available || isSelected
                     const coachHours = getCoachHoursSummary(c, weekDates, state.shifts, shift.id)
                     const projectedAssigned =
-                      coachHours.assigned + (shift.type === 'coached' ? hours : 0)
+                      coachHours.assigned +
+                      (shift.type === 'coached' || shift.type === 'other-coaching' ? hours : 0)
                     const display =
                       Math.round(projectedAssigned * 10) / 10
                     const maxDisplay = Math.round(coachHours.max * 10) / 10
