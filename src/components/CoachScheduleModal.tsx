@@ -103,6 +103,7 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
                 personName: selected.name || 'Unnamed',
                 regionLabel,
                 weekLabel: formatWeekLabel(weekStart),
+                weekStart,
               })
             }}
             disabled={!writeup}

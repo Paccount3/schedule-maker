@@ -95,6 +95,7 @@ export function ParticipantScheduleModal({
                 personName: selected.name || 'Unnamed',
                 regionLabel,
                 weekLabel: formatWeekLabel(weekStart),
+                weekStart,
               })
             }}
             disabled={!writeup}

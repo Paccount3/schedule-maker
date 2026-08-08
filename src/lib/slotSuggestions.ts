@@ -3,6 +3,7 @@ import {
   COACH_MAX_HOURS,
   getCoachHoursForWeek,
   getCoachMaxHoursForWeek,
+  shiftUsesCoach,
 } from './scheduling'
 import {
   dayOfWeekFromDate,
@@ -101,7 +102,7 @@ function participantBookedDates(
 
 function coachBookedOnDay(coachId: string, date: string, shifts: Shift[]): Interval[] {
   return shifts
-    .filter((s) => s.coachId === coachId && s.date === date && s.type === 'coached')
+    .filter((s) => s.coachId === coachId && s.date === date && shiftUsesCoach(s))
     .map((s) => ({ start: s.startMinutes, end: s.endMinutes }))
 }
 

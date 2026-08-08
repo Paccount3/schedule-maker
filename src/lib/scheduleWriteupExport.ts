@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { addDays, parseDateInput, toDateInput } from './time'
 
 const DIVIDER = '----------------------------------------'
 const GOODWILL_ORG = 'Goodwill Western & Northern Connecticut'
@@ -21,6 +22,20 @@ export interface ScheduleWriteupPdfOptions {
   personName: string
   regionLabel: string
   weekLabel: string
+  weekStart: string
+}
+
+function formatWeekFilenameRange(weekStart: string): string {
+  const start = parseDateInput(weekStart)
+  const end = addDays(start, 6)
+  return `${toDateInput(start)}_to_${toDateInput(end)}`
+}
+
+export function buildScheduleExportFilename(options: ScheduleWriteupPdfOptions): string {
+  const name = safeFilename(options.personName)
+  const range = formatWeekFilenameRange(options.weekStart)
+  const suffix = options.scheduleKind === 'coach' ? 'coach_schedule' : 'participant_schedule'
+  return `${name}_${range}_${suffix}.pdf`
 }
 
 interface ParsedEntry {
@@ -435,6 +450,5 @@ export function exportScheduleWriteupPdf(options: ScheduleWriteupPdfOptions): vo
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
   drawCompactSchedulePdf(doc, parsed, options)
 
-  const suffix = options.scheduleKind === 'coach' ? 'coach_schedule' : 'participant_schedule'
-  doc.save(`${safeFilename(options.personName)}_${suffix}.pdf`)
+  doc.save(buildScheduleExportFilename(options))
 }

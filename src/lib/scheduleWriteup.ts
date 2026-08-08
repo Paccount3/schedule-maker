@@ -25,9 +25,32 @@ function formatWeekHeading(weekStart: string): string {
   return `${startStr} – ${endStr}`
 }
 
-function milestoneInstructions(labels: string[]): string[] {
+function milestoneInstructions(
+  labels: string[],
+  perspective: 'participant' | 'coach' = 'participant',
+): string[] {
   const lines: string[] = []
   for (const label of labels) {
+    if (perspective === 'coach') {
+      switch (label) {
+        case 'First working shift':
+          lines.push("This is the participant's first working shift.")
+          break
+        case 'First coaching shift':
+          lines.push("This is the participant's first coached session.")
+          break
+        case 'Last working shift':
+          lines.push("This is the participant's last working hours shift.")
+          break
+        case 'Last coaching shift':
+          lines.push('Discuss report writing with your supervisor.')
+          break
+        default:
+          lines.push(label)
+      }
+      continue
+    }
+
     switch (label) {
       case 'First working shift':
         lines.push('This is your first working shift.')
@@ -36,10 +59,12 @@ function milestoneInstructions(labels: string[]): string[] {
         lines.push('This is your first coached session.')
         break
       case 'Last working shift':
-        lines.push('This is your last working shift.')
+        lines.push(
+          'Inform your employment specialist that you understand this is your last working shift.',
+        )
         break
       case 'Last coaching shift':
-        lines.push('This is your last coached session.')
+        lines.push('Discuss additional coaching if needed.')
         break
       default:
         lines.push(label)
@@ -267,6 +292,15 @@ export function buildCoachWeekScheduleWriteup(
       if (p?.site) lines.push(`Site: ${p.site}`)
       if (p?.siteContact?.trim()) lines.push(`Site contact: ${p.siteContact.trim()}`)
       if (p?.service) lines.push(`Service: ${p.service}`)
+      if (p) {
+        const milestones = milestoneInstructions(
+          getShiftMilestoneLabels(p, shift.id, shifts),
+          'coach',
+        )
+        for (const note of milestones) {
+          lines.push(`Important: ${note}`)
+        }
+      }
       if (shift.notes?.trim()) lines.push(`Notes: ${shift.notes.trim()}`)
     }
   })

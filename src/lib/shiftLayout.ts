@@ -9,6 +9,10 @@ function overlaps(a: Shift, b: Shift): boolean {
   return a.startMinutes < b.endMinutes && a.endMinutes > b.startMinutes
 }
 
+function sameParticipant(a: Shift, b: Shift): boolean {
+  return !!a.participantId && a.participantId === b.participantId
+}
+
 function clusterShifts(shifts: Shift[]): Shift[][] {
   let clusters: Shift[][] = shifts.map((s) => [s])
 
@@ -20,7 +24,12 @@ function clusterShifts(shifts: Shift[]): Shift[][] {
     for (const cluster of clusters) {
       let placed = false
       for (const existing of merged) {
-        if (cluster.some((s) => existing.some((e) => overlaps(s, e)))) {
+        const shouldMerge = cluster.some(
+          (s) =>
+            existing.some((e) => overlaps(s, e)) ||
+            existing.some((e) => sameParticipant(s, e)),
+        )
+        if (shouldMerge) {
           existing.push(...cluster)
           placed = true
           changed = true
@@ -39,9 +48,14 @@ function layoutCluster(shifts: Shift[]): Map<string, ShiftLayout> {
   const result = new Map<string, ShiftLayout>()
   if (shifts.length === 0) return result
 
-  // Process in stable id order so overlapping shifts don't swap columns when
-  // start times match or one is being dragged/resized.
-  const sorted = [...shifts].sort((a, b) => a.id.localeCompare(b.id))
+  // Process in chronological order so split shifts for one participant stay in
+  // the same column instead of snapping back left when a gap opens up.
+  const sorted = [...shifts].sort(
+    (a, b) =>
+      a.startMinutes - b.startMinutes ||
+      a.endMinutes - b.endMinutes ||
+      a.id.localeCompare(b.id),
+  )
 
   const columnEnds: number[] = []
   const columnByShift = new Map<string, number>()
