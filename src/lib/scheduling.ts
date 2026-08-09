@@ -381,6 +381,42 @@ export function getAuthorizationFullyScheduledMessage(
     : PARTICIPANT_FULLY_SCHEDULED_MESSAGE
 }
 
+export const SHIFT_FULLY_SCHEDULED_LABEL = 'All hours scheduled'
+export const SHIFT_FULLY_SCHEDULED_COACHING_LABEL = 'All coaching hours scheduled'
+
+export function getShiftFullyScheduledLabel(authorization: Authorization): string {
+  return isCoachingOnlyAuthorization(authorization)
+    ? SHIFT_FULLY_SCHEDULED_COACHING_LABEL
+    : SHIFT_FULLY_SCHEDULED_LABEL
+}
+
+export interface AuthorizationHoursDisplayLine {
+  label: string
+  overLimit: boolean
+}
+
+export function getAuthorizationHoursDisplayLines(
+  authorization: Authorization,
+  shifts: Shift[],
+): AuthorizationHoursDisplayLine[] {
+  const totals = getAuthorizationHoursTotal(authorization.id, shifts)
+  const lines: AuthorizationHoursDisplayLine[] = []
+
+  if (!isCoachingOnlyAuthorization(authorization)) {
+    lines.push({
+      label: `${formatHoursValue(totals.totalWork)}/${formatHoursValue(authorization.workingHours)} working hours`,
+      overLimit: totals.totalWork > authorization.workingHours,
+    })
+  }
+
+  lines.push({
+    label: `${formatHoursValue(totals.totalCoached)}/${formatHoursValue(authorization.coachingHours)} coaching hours`,
+    overLimit: totals.totalCoached > authorization.coachingHours,
+  })
+
+  return lines
+}
+
 /** @deprecated Use getAuthorizationFullyScheduledMessage */
 export function getParticipantFullyScheduledMessage(participant: Participant): string {
   const auth = participant.authorizations[0]
@@ -509,6 +545,55 @@ export function participantHasHoursIssue(
     ? participant.authorizations.filter((a) => a.id === authorizationId)
     : participant.authorizations
   return auths.some((auth) => authorizationHasHoursIssue(auth, shifts))
+}
+
+/** Stable keys for active shift and authorization issues (used for warning sounds). */
+export function collectSchedulingIssueKeys(
+  shifts: Shift[],
+  participants: Participant[],
+  coaches: Coach[],
+  weekDates: string[],
+): Set<string> {
+  const keys = new Set<string>()
+  const participantMap = new Map(participants.map((p) => [p.id, p]))
+  const coachMap = new Map(coaches.map((c) => [c.id, c]))
+
+  for (const shift of shifts) {
+    const participant = shift.participantId
+      ? participantMap.get(shift.participantId)
+      : undefined
+    const authorization = shift.authorizationId
+      ? participant?.authorizations.find((a) => a.id === shift.authorizationId)
+      : undefined
+    const coach = shift.coachId ? coachMap.get(shift.coachId) : undefined
+    const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
+    const conflicts = getShiftConflicts(
+      shift,
+      participant,
+      authorization,
+      coach,
+      shifts,
+      dayKey,
+      weekDates,
+    )
+    const level = getShiftDisplayErrorLevel(conflicts)
+    if (level === 'warning' || level === 'critical') {
+      keys.add(`shift:${shift.id}`)
+    }
+  }
+
+  for (const participant of participants) {
+    for (const auth of participant.authorizations) {
+      if (authorizationHasAuthIssue(auth, participant.id, shifts)) {
+        keys.add(`auth:${participant.id}:${auth.id}`)
+      }
+      if (authorizationHasHoursIssue(auth, shifts)) {
+        keys.add(`hours:${participant.id}:${auth.id}`)
+      }
+    }
+  }
+
+  return keys
 }
 
 export function formatHoursValue(hours: number): string {

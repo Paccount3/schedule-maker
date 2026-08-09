@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore'
-import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView } from './lib/regions'
+import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from './lib/regions'
 import { resolveSelectedAuthorization } from './lib/authorizations'
-import { isAuthorizationFullyScheduled } from './lib/scheduling'
+import { collectSchedulingIssueKeys, isAuthorizationFullyScheduled } from './lib/scheduling'
+import { playSound, playWarningSound } from './lib/sounds'
+import { getWeekDates } from './lib/time'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
 import { ConfettiCelebration } from './components/ConfettiCelebration'
@@ -18,6 +20,8 @@ export default function App() {
   const [celebration, setCelebration] = useState<{ key: number; name: string } | null>(null)
   const scheduleStatusRef = useRef<Map<string, boolean>>(new Map())
   const scheduleTrackingReadyRef = useRef(false)
+  const issueKeysRef = useRef<Set<string>>(new Set())
+  const issueTrackingReadyRef = useRef(false)
 
   const [selectedAuthorizationByParticipant, setSelectedAuthorizationByParticipant] = useState<
     Record<string, string>
@@ -26,7 +30,59 @@ export default function App() {
   useEffect(() => {
     scheduleTrackingReadyRef.current = false
     scheduleStatusRef.current.clear()
+    issueTrackingReadyRef.current = false
+    issueKeysRef.current.clear()
   }, [state.selectedRegionId])
+
+  const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
+  const regionCoachesForIssues = useMemo(
+    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
+    [state.coaches, state.selectedRegionId],
+  )
+  const regionShiftsForIssues = useMemo(
+    () =>
+      filterShiftsByRegion(
+        state.shifts,
+        state.participants,
+        state.selectedRegionId,
+        state.otherCoachingActivities,
+      ),
+    [state.shifts, state.participants, state.selectedRegionId, state.otherCoachingActivities],
+  )
+
+  useEffect(() => {
+    const issueKeys = collectSchedulingIssueKeys(
+      regionShiftsForIssues,
+      regionAllParticipants,
+      regionCoachesForIssues,
+      weekDates,
+    )
+
+    if (!issueTrackingReadyRef.current) {
+      issueKeysRef.current = issueKeys
+      issueTrackingReadyRef.current = true
+      return
+    }
+
+    let hasNewIssue = false
+    for (const key of issueKeys) {
+      if (!issueKeysRef.current.has(key)) {
+        hasNewIssue = true
+        break
+      }
+    }
+
+    if (hasNewIssue) {
+      playWarningSound()
+    }
+
+    issueKeysRef.current = issueKeys
+  }, [
+    regionAllParticipants,
+    regionCoachesForIssues,
+    regionShiftsForIssues,
+    weekDates,
+  ])
 
   useEffect(() => {
     if (!scheduleTrackingReadyRef.current) {
@@ -48,6 +104,7 @@ export default function App() {
         const nowFullyScheduled = isAuthorizationFullyScheduled(auth, p.id, state.shifts)
         const wasFullyScheduled = scheduleStatusRef.current.get(key) ?? false
         if (nowFullyScheduled && !wasFullyScheduled) {
+          playSound('celebrate')
           setCelebration({
             key: Date.now(),
             name: `${p.name || 'Participant'} (${auth.service})`,
@@ -161,11 +218,13 @@ export default function App() {
     regionOtherCoaching.find((a) => a.id === selectedOtherCoachingId)?.id ?? ''
 
   const selectParticipant = (id: string) => {
+    if (id) playSound('select')
     setSelectedParticipantId(id)
     if (id) setSelectedOtherCoachingId('')
   }
 
   const selectAuthorization = (participantId: string, authorizationId: string) => {
+    playSound('select')
     setSelectedAuthorizationByParticipant((prev) => ({
       ...prev,
       [participantId]: authorizationId,
@@ -181,6 +240,7 @@ export default function App() {
     : undefined
 
   const selectOtherCoaching = (id: string) => {
+    if (id) playSound('select')
     setSelectedOtherCoachingId(id)
     if (id) setSelectedParticipantId('')
   }

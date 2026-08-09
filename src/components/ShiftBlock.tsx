@@ -14,7 +14,11 @@ import {
   type ShiftDragPreview,
 } from '../lib/shiftDrag'
 
-import { MULTI_SHIFT_DAY_MESSAGE, type ShiftErrorLevel } from '../lib/scheduling'
+import {
+  MULTI_SHIFT_DAY_MESSAGE,
+  type AuthorizationHoursDisplayLine,
+  type ShiftErrorLevel,
+} from '../lib/scheduling'
 
 const DRAG_THRESHOLD_PX = 4
 
@@ -37,6 +41,8 @@ interface ShiftBlockProps {
   milestoneLabels?: string[]
   authorizationService?: string
   authorizationNumber?: string
+  authorizationHoursLines?: AuthorizationHoursDisplayLine[]
+  fullyScheduledLabel?: string
   errorSummary?: string
   onEdit: () => void
   onDragStart: () => void
@@ -65,6 +71,8 @@ export function ShiftBlock({
   milestoneLabels = [],
   authorizationService,
   authorizationNumber,
+  authorizationHoursLines = [],
+  fullyScheduledLabel,
   errorSummary,
   onEdit,
   onDragStart,
@@ -253,6 +261,15 @@ export function ShiftBlock({
             {site}
           </div>
         )}
+        {authorizationHoursLines.map((line) => (
+          <div
+            key={line.label}
+            className={`truncate tabular-nums ${line.overLimit ? 'text-amber-300/95' : 'opacity-75'}`}
+            style={{ fontSize: `${detailFontSize}px` }}
+          >
+            {line.label}
+          </div>
+        ))}
         {milestoneLabels.map((label) => (
           <div
             key={label}
@@ -262,6 +279,17 @@ export function ShiftBlock({
             {label}
           </div>
         ))}
+        {fullyScheduledLabel && (
+          <div
+            className="mt-0.5 flex items-start gap-1 font-medium text-emerald-400"
+            style={{ fontSize: `${errorFontSize}px` }}
+          >
+            <span className="shrink-0 leading-none" aria-hidden>
+              ✓
+            </span>
+            <span className="min-w-0 leading-tight drop-shadow-sm">{fullyScheduledLabel}</span>
+          </div>
+        )}
         {errorLevel !== 'none' && errorSummary && (
           <div
             className="mt-0.5 truncate font-medium opacity-90"

@@ -16,6 +16,7 @@ import {
   saveState,
 } from '../lib/storage'
 import { buildCopiedShiftsFromPreviousWeek } from '../lib/scheduling'
+import { playSound, playSoundOption, type SoundOption } from '../lib/sounds'
 import { addDays, durationHours, endMinutesFromStartingHours, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
 
 interface StoreContextValue {
@@ -35,10 +36,10 @@ interface StoreContextValue {
   addOtherCoachingActivity: () => OtherCoachingActivity
   updateOtherCoachingActivity: (activity: OtherCoachingActivity) => void
   removeOtherCoachingActivity: (id: string) => void
-  addShift: (shift: Omit<Shift, 'id'>) => Shift
-  addShifts: (shifts: Omit<Shift, 'id'>[]) => void
-  updateShift: (shift: Shift) => void
-  removeShift: (id: string) => void
+  addShift: (shift: Omit<Shift, 'id'>, sound?: SoundOption) => Shift
+  addShifts: (shifts: Omit<Shift, 'id'>[], sound?: SoundOption) => void
+  updateShift: (shift: Shift, sound?: SoundOption) => void
+  removeShift: (id: string, sound?: SoundOption) => void
   createQuickShift: (
     participantId: string,
     authorizationId: string,
@@ -179,19 +180,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         otherCoachingActivities: s.otherCoachingActivities.filter((x) => x.id !== id),
         shifts: s.shifts.filter((x) => x.otherCoachingActivityId !== id),
       })),
-    addShift: (shiftData) => {
+    addShift: (shiftData, sound) => {
       const shift: Shift = { ...shiftData, id: crypto.randomUUID() }
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      playSoundOption(sound, 'place')
       return shift
     },
-    addShifts: (shiftsData) => {
+    addShifts: (shiftsData, sound) => {
       const newShifts: Shift[] = shiftsData.map((d) => ({
         ...d,
         id: crypto.randomUUID(),
       }))
       update((s) => ({ ...s, shifts: [...s.shifts, ...newShifts] }))
+      playSoundOption(sound, newShifts.length > 1 ? 'bulk' : 'place')
     },
-    updateShift: (shift) =>
+    updateShift: (shift, sound) => {
       update((s) => {
         if (shift.type === 'other-coaching' && shift.otherCoachingActivityId) {
           const activityId = shift.otherCoachingActivityId
@@ -221,12 +224,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           shifts: s.shifts.map((x) => (x.id === shift.id ? shift : x)),
         }
-      }),
-    removeShift: (id) =>
-      update((s) => ({ ...s, shifts: s.shifts.filter((x) => x.id !== id) })),
+      })
+      playSoundOption(sound, 'drop')
+    },
+    removeShift: (id, sound) => {
+      update((s) => ({ ...s, shifts: s.shifts.filter((x) => x.id !== id) }))
+      playSoundOption(sound, 'delete')
+    },
     createQuickShift: (participantId, authorizationId, date, startMinutes, endMinutes, type = 'solo') => {
       const shift = createShift(participantId, authorizationId, date, startMinutes, endMinutes, type)
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      playSound('place')
       return shift
     },
     createQuickOtherCoachingShift: (activityId, coachId, date, startMinutes, endMinutes) => {
@@ -238,6 +246,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         endMinutes,
       )
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      playSound('place')
       return shift
     },
     copyShiftsFromPreviousWeek: () => {
@@ -259,6 +268,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (copied.length === 0) return 0
       const newShifts: Shift[] = copied.map((d) => ({ ...d, id: crypto.randomUUID() }))
       update((s) => ({ ...s, shifts: [...s.shifts, ...newShifts] }))
+      playSound('bulk')
       return copied.length
     },
   }

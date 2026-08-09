@@ -19,6 +19,12 @@ interface Particle {
   maxLife: number
 }
 
+interface BurstConfig {
+  xRatio: number
+  yRatio: number
+  delayMs: number
+}
+
 const COLORS = [
   '#34d399',
   '#22c55e',
@@ -30,14 +36,23 @@ const COLORS = [
   '#fb7185',
 ]
 
+const BURSTS: BurstConfig[] = [
+  { xRatio: 0.5, yRatio: 0.35, delayMs: 0 },
+  { xRatio: 0.12, yRatio: 0.12, delayMs: 180 },
+  { xRatio: 0.88, yRatio: 0.12, delayMs: 360 },
+]
+
+const PARTICLES_PER_BURST = 120
+
 function randomBetween(min: number, max: number): number {
   return min + Math.random() * (max - min)
 }
 
-function createParticles(count: number, width: number, height: number): Particle[] {
-  const originX = width * 0.5
-  const originY = height * 0.35
-
+function createParticlesAt(
+  originX: number,
+  originY: number,
+  count: number,
+): Particle[] {
   return Array.from({ length: count }, () => {
     const angle = randomBetween(-Math.PI, Math.PI)
     const speed = randomBetween(6, 16)
@@ -75,7 +90,9 @@ export function ConfettiCelebration({ trigger, onComplete }: ConfettiCelebration
     if (!ctx) return
 
     let raf = 0
-    let particles = createParticles(160, window.innerWidth, window.innerHeight)
+    const startTime = performance.now()
+    let particles: Particle[] = []
+    const spawnedBursts = new Set<number>()
 
     const resize = () => {
       canvas.width = window.innerWidth
@@ -85,7 +102,21 @@ export function ConfettiCelebration({ trigger, onComplete }: ConfettiCelebration
     resize()
     window.addEventListener('resize', resize)
 
-    const tick = () => {
+    const tick = (now: number) => {
+      const elapsed = now - startTime
+
+      for (let i = 0; i < BURSTS.length; i++) {
+        const burst = BURSTS[i]
+        if (!spawnedBursts.has(i) && elapsed >= burst.delayMs) {
+          spawnedBursts.add(i)
+          const originX = canvas.width * burst.xRatio
+          const originY = canvas.height * burst.yRatio
+          particles = particles.concat(
+            createParticlesAt(originX, originY, PARTICLES_PER_BURST),
+          )
+        }
+      }
+
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
       particles = particles.filter((p) => {
@@ -109,7 +140,7 @@ export function ConfettiCelebration({ trigger, onComplete }: ConfettiCelebration
         return true
       })
 
-      if (particles.length > 0) {
+      if (particles.length > 0 || spawnedBursts.size < BURSTS.length) {
         raf = requestAnimationFrame(tick)
       } else {
         onCompleteRef.current?.()

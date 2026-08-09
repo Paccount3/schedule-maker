@@ -110,7 +110,7 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
   }
 
   const handleCancel = () => {
-    if (isNew) removeShift(shift.id)
+    if (isNew) removeShift(shift.id, false)
     onClose()
   }
 

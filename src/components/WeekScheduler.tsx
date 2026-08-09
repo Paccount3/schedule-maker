@@ -8,9 +8,12 @@ import {
   formatHoursValue,
   getParticipantHoursForWeek,
   getShiftConflicts,
+  getAuthorizationHoursDisplayLines,
   getShiftDisplayErrorLevel,
+  getShiftFullyScheduledLabel,
   getShiftMilestoneLabels,
   hasMultiShiftDayNotice,
+  isAuthorizationFullyScheduled,
   splitShiftForPartialCoverage,
 } from '../lib/scheduling'
 import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from '../lib/regions'
@@ -31,6 +34,7 @@ import {
   todayDateInput,
 } from '../lib/time'
 import { clipboardShiftAt, shiftToClipboard } from '../lib/shiftClipboard'
+import { playSound } from '../lib/sounds'
 import { ContextMenu, type ContextMenuItem } from './ContextMenu'
 import { ShiftEditor } from './ShiftEditor'
 import { ShiftBlock } from './ShiftBlock'
@@ -283,7 +287,7 @@ export function WeekScheduler({
           onClick: () => {
             const clip = copiedShiftRef.current
             if (!clip) return
-            addShift(clipboardShiftAt(clip, date, startMinutes))
+            addShift(clipboardShiftAt(clip, date, startMinutes), 'paste')
           },
         },
       ])
@@ -440,26 +444,38 @@ export function WeekScheduler({
 
         <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-self-end">
           <button
-            onClick={() => copyShiftsFromPreviousWeek()}
+            onClick={() => {
+              const copied = copyShiftsFromPreviousWeek()
+              if (copied === 0) playSound('open')
+            }}
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
             title="Copy all shifts from the previous week onto the same days this week"
           >
             Copy Shifts from Last Week
           </button>
           <button
-            onClick={prevWeek}
+            onClick={() => {
+              playSound('weekNav')
+              prevWeek()
+            }}
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
           >
             ← Prev
           </button>
           <button
-            onClick={goToToday}
+            onClick={() => {
+              playSound('weekNav')
+              goToToday()
+            }}
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
           >
             {formatWeekLabel(state.weekStart)}
           </button>
           <button
-            onClick={nextWeek}
+            onClick={() => {
+              playSound('weekNav')
+              nextWeek()
+            }}
             className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
           >
             Next →
@@ -646,6 +662,17 @@ export function WeekScheduler({
                       shiftAuth && !isOtherCoaching
                         ? getShiftMilestoneLabels(shiftAuth, shift.id, shiftsForEval)
                         : []
+                    const fullyScheduledLabel =
+                      p &&
+                      shiftAuth &&
+                      !isOtherCoaching &&
+                      isAuthorizationFullyScheduled(shiftAuth, p.id, shiftsForEval)
+                        ? getShiftFullyScheduledLabel(shiftAuth)
+                        : undefined
+                    const authorizationHoursLines =
+                      shiftAuth && !isOtherCoaching
+                        ? getAuthorizationHoursDisplayLines(shiftAuth, shiftsForEval)
+                        : undefined
 
                     return (
                       <ShiftBlock
@@ -676,12 +703,18 @@ export function WeekScheduler({
                         authorizationNumber={
                           !isOtherCoaching ? shiftAuth?.authNumber : undefined
                         }
+                        authorizationHoursLines={authorizationHoursLines}
+                        fullyScheduledLabel={fullyScheduledLabel}
                         errorSummary={errorSummary}
                         onEdit={() => {
+                          playSound('open')
                           setIsNewShift(false)
                           setEditingShift(original)
                         }}
-                        onDragStart={() => setIsDragging(true)}
+                        onDragStart={() => {
+                          playSound('pickup')
+                          setIsDragging(true)
+                        }}
                         onDragPreview={setDragPreview}
                         onDragEnd={(preview) => handleDragEnd(original, preview)}
                         onDragCancel={() => {
@@ -695,6 +728,7 @@ export function WeekScheduler({
                                 label: 'Copy',
                                 onClick: () => {
                                   copiedShiftRef.current = shiftToClipboard(original)
+                                  playSound('copy')
                                 },
                               },
                               {
@@ -713,6 +747,7 @@ export function WeekScheduler({
                               disabled: original.type === 'coached',
                               onClick: () => {
                                 setIsNewShift(false)
+                                playSound('open')
                                 setEditingShift({ ...original, type: 'coached' })
                               },
                             },
@@ -729,14 +764,16 @@ export function WeekScheduler({
                               onClick: () => {
                                 const split = splitShiftForPartialCoverage(original)
                                 if (!split) return
-                                removeShift(original.id)
-                                addShifts(split)
+                                removeShift(original.id, false)
+                                addShifts(split, false)
+                                playSound('split')
                               },
                             },
                             {
                               label: 'Copy',
                               onClick: () => {
                                 copiedShiftRef.current = shiftToClipboard(original)
+                                playSound('copy')
                               },
                             },
                             {
