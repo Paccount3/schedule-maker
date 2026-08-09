@@ -153,12 +153,14 @@ function playOpen(now: number): void {
   tone(660, now, 0.035, { volume: 0.045, type: 'triangle' })
 }
 
-function playCelebrate(now: number): void {
-  const notes = [523.25, 659.25, 783.99, 1046.5]
-  notes.forEach((freq, index) => {
-    tone(freq, now + index * 0.09, 0.12, { volume: 0.07, type: 'sine', release: 0.12 })
-  })
-  tone(1318.5, now + 0.36, 0.18, { volume: 0.06, type: 'triangle', release: 0.16 })
+function playConfettiPop(now: number): void {
+  noiseBurst(now, 0.035, 0.028)
+  tone(880, now + 0.01, 0.05, { volume: 0.065, type: 'sine', release: 0.08 })
+  tone(1175, now + 0.03, 0.045, { volume: 0.05, type: 'triangle', release: 0.07 })
+}
+
+function playCelebrate(_now: number): void {
+  // Kept for SoundId map compatibility; celebration uses playConfettiPopSound().
 }
 
 function playBulk(now: number): void {
@@ -201,6 +203,16 @@ const PLAYERS: Record<SoundId, (now: number) => void> = {
 
 let lastWarningPlayedAt = 0
 const WARNING_SOUND_COOLDOWN_MS = 900
+
+export function playConfettiPopSound(): void {
+  try {
+    unlockAudio()
+    const ctx = getContext()
+    playConfettiPop(ctx.currentTime + 0.001)
+  } catch {
+    // Ignore audio failures
+  }
+}
 
 export function playWarningSound(): void {
   const now = Date.now()

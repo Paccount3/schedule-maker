@@ -1,4 +1,4 @@
-import type { Authorization, Coach, Participant, Shift, TimeRange } from '../types'
+import type { Authorization, Coach, OtherCoachingActivity, Participant, Shift, TimeRange } from '../types'
 import type { DayOfWeek } from '../types'
 import {
   authorizationOverlapsRange,
@@ -547,16 +547,33 @@ export function participantHasHoursIssue(
   return auths.some((auth) => authorizationHasHoursIssue(auth, shifts))
 }
 
+function resolveShiftCoach(
+  shift: Shift,
+  coaches: Coach[],
+  otherCoachingActivities: OtherCoachingActivity[],
+): Coach | undefined {
+  if (shift.coachId) {
+    return coaches.find((c) => c.id === shift.coachId)
+  }
+  if (shift.type === 'other-coaching' && shift.otherCoachingActivityId) {
+    const activity = otherCoachingActivities.find((a) => a.id === shift.otherCoachingActivityId)
+    if (activity?.coachId) {
+      return coaches.find((c) => c.id === activity.coachId)
+    }
+  }
+  return undefined
+}
+
 /** Stable keys for active shift and authorization issues (used for warning sounds). */
 export function collectSchedulingIssueKeys(
   shifts: Shift[],
   participants: Participant[],
   coaches: Coach[],
   weekDates: string[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): Set<string> {
   const keys = new Set<string>()
   const participantMap = new Map(participants.map((p) => [p.id, p]))
-  const coachMap = new Map(coaches.map((c) => [c.id, c]))
 
   for (const shift of shifts) {
     const participant = shift.participantId
@@ -565,7 +582,7 @@ export function collectSchedulingIssueKeys(
     const authorization = shift.authorizationId
       ? participant?.authorizations.find((a) => a.id === shift.authorizationId)
       : undefined
-    const coach = shift.coachId ? coachMap.get(shift.coachId) : undefined
+    const coach = resolveShiftCoach(shift, coaches, otherCoachingActivities)
     const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
     const conflicts = getShiftConflicts(
       shift,
@@ -578,7 +595,11 @@ export function collectSchedulingIssueKeys(
     )
     const level = getShiftDisplayErrorLevel(conflicts)
     if (level === 'warning' || level === 'critical') {
-      keys.add(`shift:${shift.id}`)
+      keys.add(
+        shift.type === 'other-coaching'
+          ? `other-coaching:${shift.id}`
+          : `shift:${shift.id}`,
+      )
     }
   }
 
@@ -590,6 +611,12 @@ export function collectSchedulingIssueKeys(
       if (authorizationHasHoursIssue(auth, shifts)) {
         keys.add(`hours:${participant.id}:${auth.id}`)
       }
+    }
+  }
+
+  for (const coach of coaches) {
+    for (const message of getCoachSidebarIssueMessages(coach, weekDates, shifts, participants)) {
+      keys.add(`coach:${coach.id}:${message}`)
     }
   }
 

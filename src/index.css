@@ -53,3 +53,31 @@ input[type='color']::-webkit-color-swatch {
 *::-webkit-scrollbar-corner {
   background: #1e293b;
 }
+
+@keyframes celebration-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes celebration-banner-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.celebration-banner-in {
+  animation: celebration-banner-in 0.4s ease-out forwards;
+}
+
+.celebration-banner-out {
+  animation: celebration-banner-out 2.5s ease-in forwards;
+}

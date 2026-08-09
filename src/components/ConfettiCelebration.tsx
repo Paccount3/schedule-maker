@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { playConfettiPopSound } from '../lib/sounds'
 
 interface ConfettiCelebrationProps {
   trigger: number
@@ -109,6 +110,7 @@ export function ConfettiCelebration({ trigger, onComplete }: ConfettiCelebration
         const burst = BURSTS[i]
         if (!spawnedBursts.has(i) && elapsed >= burst.delayMs) {
           spawnedBursts.add(i)
+          playConfettiPopSound()
           const originX = canvas.width * burst.xRatio
           const originY = canvas.height * burst.yRatio
           particles = particles.concat(

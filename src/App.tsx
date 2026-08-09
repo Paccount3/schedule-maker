@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore'
-import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from './lib/regions'
+import { filterCoachesByRegion, filterOtherCoachingByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from './lib/regions'
 import { resolveSelectedAuthorization } from './lib/authorizations'
 import { collectSchedulingIssueKeys, isAuthorizationFullyScheduled } from './lib/scheduling'
 import { playSound, playWarningSound } from './lib/sounds'
@@ -8,6 +8,9 @@ import { getWeekDates } from './lib/time'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
 import { ConfettiCelebration } from './components/ConfettiCelebration'
+
+const CELEBRATION_HOLD_MS = 5000
+const CELEBRATION_FADE_MS = 2500
 
 export default function App() {
   const { state } = useStore()
@@ -17,7 +20,11 @@ export default function App() {
     [state.participants, state.selectedRegionId],
   )
 
-  const [celebration, setCelebration] = useState<{ key: number; name: string } | null>(null)
+  const [celebration, setCelebration] = useState<{
+    key: number
+    name: string
+    fading?: boolean
+  } | null>(null)
   const scheduleStatusRef = useRef<Map<string, boolean>>(new Map())
   const scheduleTrackingReadyRef = useRef(false)
   const issueKeysRef = useRef<Set<string>>(new Set())
@@ -50,12 +57,18 @@ export default function App() {
     [state.shifts, state.participants, state.selectedRegionId, state.otherCoachingActivities],
   )
 
+  const regionOtherCoachingForIssues = useMemo(
+    () => filterOtherCoachingByRegion(state.otherCoachingActivities, state.selectedRegionId),
+    [state.otherCoachingActivities, state.selectedRegionId],
+  )
+
   useEffect(() => {
     const issueKeys = collectSchedulingIssueKeys(
       regionShiftsForIssues,
       regionAllParticipants,
       regionCoachesForIssues,
       weekDates,
+      regionOtherCoachingForIssues,
     )
 
     if (!issueTrackingReadyRef.current) {
@@ -80,6 +93,7 @@ export default function App() {
   }, [
     regionAllParticipants,
     regionCoachesForIssues,
+    regionOtherCoachingForIssues,
     regionShiftsForIssues,
     weekDates,
   ])
@@ -104,7 +118,6 @@ export default function App() {
         const nowFullyScheduled = isAuthorizationFullyScheduled(auth, p.id, state.shifts)
         const wasFullyScheduled = scheduleStatusRef.current.get(key) ?? false
         if (nowFullyScheduled && !wasFullyScheduled) {
-          playSound('celebrate')
           setCelebration({
             key: Date.now(),
             name: `${p.name || 'Participant'} (${auth.service})`,
@@ -114,6 +127,23 @@ export default function App() {
       }
     }
   }, [regionAllParticipants, state.shifts])
+
+  useEffect(() => {
+    if (!celebration) return
+
+    const fadeTimer = window.setTimeout(() => {
+      setCelebration((current) => (current ? { ...current, fading: true } : null))
+    }, CELEBRATION_HOLD_MS)
+
+    const dismissTimer = window.setTimeout(() => {
+      setCelebration(null)
+    }, CELEBRATION_HOLD_MS + CELEBRATION_FADE_MS)
+
+    return () => {
+      window.clearTimeout(fadeTimer)
+      window.clearTimeout(dismissTimer)
+    }
+  }, [celebration?.key])
 
   const regionParticipants = useMemo(
     () =>
@@ -285,11 +315,12 @@ export default function App() {
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
       {celebration && (
         <>
-          <ConfettiCelebration
-            trigger={celebration.key}
-            onComplete={() => setCelebration(null)}
-          />
-          <div className="pointer-events-none fixed left-1/2 top-5 z-[210] -translate-x-1/2 animate-pulse rounded-full border border-emerald-500/40 bg-emerald-950/90 px-5 py-2.5 text-sm font-medium text-emerald-200 shadow-lg shadow-emerald-950/50">
+          <ConfettiCelebration trigger={celebration.key} />
+          <div
+            className={`pointer-events-none fixed left-1/2 top-5 z-[210] -translate-x-1/2 rounded-full border border-emerald-500/40 bg-emerald-950/90 px-5 py-2.5 text-sm font-medium text-emerald-200 shadow-lg shadow-emerald-950/50 ${
+              celebration.fading ? 'celebration-banner-out' : 'celebration-banner-in'
+            }`}
+          >
             {celebration.name} — all shifts scheduled!
           </div>
         </>
