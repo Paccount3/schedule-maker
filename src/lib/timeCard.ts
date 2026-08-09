@@ -1,4 +1,5 @@
 import type { Participant, Shift } from '../types'
+import { getAuthorizationById } from './authorizations'
 import {
   addDaysToDateInput,
   durationHours,
@@ -214,6 +215,13 @@ export function buildTimeCardBundle(
   const amount = Math.round(weeklyCards.reduce((sum, c) => sum + c.payTotal, 0) * 100) / 100
   const participantName = participant.name || 'Unnamed'
   const { address1, address2 } = splitCheckAddress(participant.bestAddressForChecks ?? '')
+  const primaryAuth =
+    getAuthorizationById(
+      participant,
+      participantShifts.find((s) => s.authorizationId)?.authorizationId,
+    ) ?? participant.authorizations[0]
+  const service = primaryAuth?.service ?? 'Other Service'
+  const authNumber = primaryAuth?.authNumber ?? ''
 
   const checkRequest: CheckRequestFormData = {
     formDate: formatShortDate(endDate),
@@ -221,11 +229,11 @@ export function buildTimeCardBundle(
     name: participantName,
     address1,
     address2,
-    service: participant.service,
-    authNumber: participant.authNumber,
+    service,
+    authNumber,
     wageRate,
     totalHours,
-    reason: buildCheckRequestReason(participant.service, wageRate, totalHours, amount),
+    reason: buildCheckRequestReason(service, wageRate, totalHours, amount),
     returnCheckTo: '',
     voucherNo: '',
     chargeAccount: '',

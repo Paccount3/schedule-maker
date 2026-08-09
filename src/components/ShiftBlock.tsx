@@ -35,6 +35,8 @@ interface ShiftBlockProps {
   errorLevel?: ShiftErrorLevel
   multiShiftNotice?: boolean
   milestoneLabels?: string[]
+  authorizationService?: string
+  authorizationNumber?: string
   errorSummary?: string
   onEdit: () => void
   onDragStart: () => void
@@ -61,6 +63,8 @@ export function ShiftBlock({
   errorLevel = 'none',
   multiShiftNotice = false,
   milestoneLabels = [],
+  authorizationService,
+  authorizationNumber,
   errorSummary,
   onEdit,
   onDragStart,
@@ -225,6 +229,15 @@ export function ShiftBlock({
         <div className="truncate opacity-90">
           {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
         </div>
+        {!isOtherCoaching && authorizationService && (
+          <div
+            className="truncate opacity-85"
+            style={{ fontSize: `${subFontSize}px` }}
+          >
+            {authorizationService}
+            {authorizationNumber ? ` · Auth ${authorizationNumber}` : ''}
+          </div>
+        )}
         <div className="truncate opacity-80" style={{ fontSize: `${subFontSize}px` }}>
           {isOtherCoaching
             ? coachName || 'NO COACH'

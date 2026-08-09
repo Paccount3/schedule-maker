@@ -65,17 +65,23 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
   const coach = shift.coachId ? regionCoaches.find((c) => c.id === shift.coachId) : undefined
   const dayOfWeek = dayOfWeekFromDate(parseDateInput(shift.date))
 
+  const authorization =
+    participant && shift.authorizationId
+      ? participant.authorizations.find((a) => a.id === shift.authorizationId)
+      : undefined
+
   const conflicts = getShiftConflicts(
     shift,
     participant,
+    authorization,
     coach,
     state.shifts,
     dayOfWeek,
     weekDates,
   )
   const milestoneLabels =
-    participant && !isOtherCoaching
-      ? getShiftMilestoneLabels(participant, shift.id, state.shifts)
+    authorization && !isOtherCoaching
+      ? getShiftMilestoneLabels(authorization, shift.id, state.shifts)
       : []
 
   const availableCoaches =

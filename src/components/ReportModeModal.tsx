@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Participant } from '../types'
 import { useStore } from '../store/useStore'
+import { isCoachingOnlyAuthorization } from '../lib/authorizations'
 import {
   formatHoursValue,
   getCoachHoursInRange,
   getParticipantHoursInRange,
-  isCoachingOnlyParticipant,
 } from '../lib/scheduling'
 import {
   filterCoachesByRegion,
@@ -137,7 +137,11 @@ function ParticipantReportCard({
       {expanded && (
         <div className="border-t border-slate-800 px-3 pb-3 pt-2">
           <p className="font-mono text-[10px] tracking-wide text-slate-500">
-            Auth # {entry.participant.authNumber}
+            {entry.participant.authorizations.length === 1
+              ? `Auth # ${entry.participant.authorizations[0].authNumber}`
+              : entry.participant.authorizations
+                  .map((a) => `${a.service}: ${a.authNumber}`)
+                  .join(' · ')}
           </p>
           <div className="mt-1.5 space-y-0.5 text-sm tabular-nums text-slate-300">
             {entry.showWorked && <p>{formatHoursValue(entry.hoursWorked)}h worked</p>}
@@ -254,7 +258,9 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
         endDate,
       )
       const name = participant.name || 'Unnamed'
-      const showWorked = !isCoachingOnlyParticipant(participant)
+      const showWorked = participant.authorizations.some(
+        (a) => !isCoachingOnlyAuthorization(a),
+      )
 
       return {
         id: participant.id,

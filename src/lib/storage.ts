@@ -1,5 +1,10 @@
 import type { AppState, Coach, OtherCoachingActivity, Participant, Shift } from '../types'
-import { DEFAULT_PARTICIPANT_AUTH_NUMBER, DEFAULT_REGIONS, defaultStartingHoursForCategory } from '../types'
+import { DEFAULT_REGIONS, defaultStartingHoursForCategory } from '../types'
+import {
+  assignShiftsToDefaultAuthorizations,
+  createEmptyAuthorization,
+  migrateParticipantRecord,
+} from './authorizations'
 import { pickCoachColor } from './colors'
 import { getDefaultRegionId } from './regions'
 import { defaultAvailability } from './scheduling'
@@ -13,6 +18,16 @@ function createSampleData(): AppState {
   const weekStart = toDateInput(startOfWeek(new Date()))
   const sampleAuth = defaultParticipantAuthRange(new Date())
 
+  const p1Auth = createEmptyAuthorization('WA', new Date())
+  p1Auth.authStart = sampleAuth.authStart
+  p1Auth.authEnd = sampleAuth.authEnd
+
+  const p2Auth = createEmptyAuthorization('WA', new Date())
+  p2Auth.authStart = sampleAuth.authStart
+  p2Auth.authEnd = sampleAuth.authEnd
+  p2Auth.workingHours = 30
+  p2Auth.coachingHours = 15
+
   const participants: Participant[] = [
     {
       id: generateId(),
@@ -20,12 +35,7 @@ function createSampleData(): AppState {
       name: 'Alex Rivera',
       site: 'Downtown Center',
       siteContact: '',
-      service: 'WA',
-      workingHoursPerWeek: 40,
-      coachingHoursPerWeek: 20,
-      authStart: sampleAuth.authStart,
-      authEnd: sampleAuth.authEnd,
-      authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
+      authorizations: [p1Auth],
       bestAddressForChecks: '',
       notes: '',
     },
@@ -35,12 +45,7 @@ function createSampleData(): AppState {
       name: 'Jordan Kim',
       site: 'North Campus',
       siteContact: '',
-      service: 'WA',
-      workingHoursPerWeek: 30,
-      coachingHoursPerWeek: 15,
-      authStart: sampleAuth.authStart,
-      authEnd: sampleAuth.authEnd,
-      authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
+      authorizations: [p2Auth],
       bestAddressForChecks: '',
       notes: '',
     },
@@ -132,6 +137,7 @@ function createSampleData(): AppState {
     {
       id: generateId(),
       participantId: p1,
+      authorizationId: p1Auth.id,
       date: mon,
       startMinutes: 9 * 60,
       endMinutes: 17 * 60,
@@ -141,6 +147,7 @@ function createSampleData(): AppState {
     {
       id: generateId(),
       participantId: p1,
+      authorizationId: p1Auth.id,
       date: toDateInput(tue),
       startMinutes: 10 * 60,
       endMinutes: 14 * 60,
@@ -172,6 +179,25 @@ export function loadState(): AppState {
       const weekStart = parsed.weekStart
         ? toDateInput(startOfWeek(parseDateInput(parsed.weekStart)))
         : toDateInput(startOfWeek(new Date()))
+
+      const participants = (parsed.participants ?? []).map((p) =>
+        migrateParticipantRecord(
+          {
+            ...p,
+            regionId: p.regionId ?? defaultRegionId,
+            notes: p.notes ?? '',
+            bestAddressForChecks: p.bestAddressForChecks ?? '',
+            siteContact: p.siteContact ?? '',
+          },
+          defaultAuth,
+        ),
+      )
+
+      const shifts = assignShiftsToDefaultAuthorizations(
+        participants,
+        parsed.shifts ?? [],
+      )
+
       return {
         ...parsed,
         regions,
@@ -181,18 +207,8 @@ export function loadState(): AppState {
           regions.some((r) => r.id === parsed.selectedRegionId)
             ? parsed.selectedRegionId
             : defaultRegionId,
-        participants: parsed.participants.map((p) => ({
-          ...p,
-          regionId: p.regionId ?? defaultRegionId,
-          service: p.service ?? 'WA',
-          notes: p.notes ?? '',
-          authStart: p.authStart?.trim() || defaultAuth.authStart,
-          authEnd: p.authEnd?.trim() || defaultAuth.authEnd,
-          authNumber: p.authNumber?.trim() || DEFAULT_PARTICIPANT_AUTH_NUMBER,
-          bestAddressForChecks: p.bestAddressForChecks ?? '',
-          siteContact: p.siteContact ?? '',
-        })),
-        coaches: parsed.coaches.map((c, i) => ({
+        participants,
+        coaches: (parsed.coaches ?? []).map((c, i) => ({
           ...c,
           regionId: c.regionId ?? defaultRegionId,
           color: c.color || pickCoachColor(i),
@@ -200,6 +216,7 @@ export function loadState(): AppState {
           notes: c.notes ?? '',
         })),
         otherCoachingActivities: parsed.otherCoachingActivities ?? [],
+        shifts,
       }
     }
   } catch {
@@ -213,19 +230,13 @@ export function saveState(state: AppState): void {
 }
 
 export function createEmptyParticipant(regionId: string): Participant {
-  const { authStart, authEnd } = defaultParticipantAuthRange(new Date())
   return {
     id: generateId(),
     regionId,
     name: '',
     site: '',
     siteContact: '',
-    service: 'WA',
-    workingHoursPerWeek: 40,
-    coachingHoursPerWeek: 20,
-    authStart,
-    authEnd,
-    authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
+    authorizations: [createEmptyAuthorization()],
     bestAddressForChecks: '',
     notes: '',
   }
@@ -279,6 +290,7 @@ export function createOtherCoachingShift(
 
 export function createShift(
   participantId: string,
+  authorizationId: string,
   date: string,
   startMinutes: number,
   endMinutes: number,
@@ -287,6 +299,7 @@ export function createShift(
   return {
     id: generateId(),
     participantId,
+    authorizationId,
     date,
     startMinutes,
     endMinutes,

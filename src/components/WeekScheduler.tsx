@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { Coach, Shift } from '../types'
 import { useStore } from '../store/useStore'
 import { hexToRgba } from '../lib/colors'
+import { resolveSelectedAuthorization, isAuthorizationSchedulable, isCoachingOnlyAuthorization } from '../lib/authorizations'
 import {
   formatShiftConflictSummary,
   formatHoursValue,
@@ -10,10 +11,9 @@ import {
   getShiftDisplayErrorLevel,
   getShiftMilestoneLabels,
   hasMultiShiftDayNotice,
-  isCoachingOnlyParticipant,
   splitShiftForPartialCoverage,
 } from '../lib/scheduling'
-import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsForWeekView, filterShiftsByRegion } from '../lib/regions'
+import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from '../lib/regions'
 import { layoutDayShifts } from '../lib/shiftLayout'
 import type { ShiftDragPreview } from '../lib/shiftDrag'
 import {
@@ -44,6 +44,7 @@ const HOUR_COUNT = (CALENDAR_VIEW_END - CALENDAR_VIEW_START) / 60
 
 interface WeekSchedulerProps {
   selectedParticipantId: string
+  selectedAuthorizationId: string
   selectedOtherCoachingId: string
   visibleCoachIds: Set<string>
   visibleCoachShiftIds: Set<string>
@@ -105,6 +106,7 @@ function CoachAvailabilityOverlay({
 
 export function WeekScheduler({
   selectedParticipantId,
+  selectedAuthorizationId,
   selectedOtherCoachingId,
   visibleCoachIds,
   visibleCoachShiftIds,
@@ -183,10 +185,19 @@ export function WeekScheduler({
   )
 
   const participant = regionParticipants.find((p) => p.id === selectedParticipantId)
+  const selectedAuthorization = participant
+    ? resolveSelectedAuthorization(participant, selectedAuthorizationId)
+    : undefined
   const otherCoachingActivity = regionOtherCoaching.find((a) => a.id === selectedOtherCoachingId)
   const participantMap = useMemo(
-    () => new Map(regionParticipants.map((p) => [p.id, p])),
-    [regionParticipants],
+    () =>
+      new Map(
+        filterParticipantsByRegion(state.participants, state.selectedRegionId).map((p) => [
+          p.id,
+          p,
+        ]),
+      ),
+    [state.participants, state.selectedRegionId],
   )
   const otherCoachingMap = useMemo(
     () => new Map(regionOtherCoaching.map((a) => [a.id, a])),
@@ -218,9 +229,15 @@ export function WeekScheduler({
     [regionShifts, weekDates, visibleParticipantIds, visibleCoachShiftIds, visibleOtherCoachingIds],
   )
 
-  const hoursSummary = participant
-    ? getParticipantHoursForWeek(participant, weekDates, regionShifts)
-    : null
+  const hoursSummary =
+    selectedAuthorization
+      ? getParticipantHoursForWeek(
+          selectedAuthorization.id,
+          weekDates,
+          regionShifts,
+          selectedAuthorization,
+        )
+      : null
 
   const coachMap = useMemo(
     () => new Map(regionCoaches.map((c) => [c.id, c])),
@@ -294,9 +311,17 @@ export function WeekScheduler({
       return
     }
 
-    if (!participant) return
+    if (!participant || !selectedAuthorization) return
+    if (!isAuthorizationSchedulable(selectedAuthorization)) return
 
-    const shift = createQuickShift(participant.id, date, startMinutes, endMinutes, 'solo')
+    const shift = createQuickShift(
+      participant.id,
+      selectedAuthorization.id,
+      date,
+      startMinutes,
+      endMinutes,
+      'solo',
+    )
     setIsNewShift(true)
     setEditingShift(shift)
   }
@@ -306,7 +331,8 @@ export function WeekScheduler({
       let date = preview.date
       if (original.type !== 'other-coaching' && original.participantId) {
         const p = participantMap.get(original.participantId)
-        if (p && (date < p.authStart || date > p.authEnd)) {
+        const auth = p?.authorizations.find((a) => a.id === original.authorizationId)
+        if (auth && (date < auth.authStart || date > auth.authEnd)) {
           date = original.date
         }
       }
@@ -339,7 +365,9 @@ export function WeekScheduler({
   )
 
   const gridBodyHeight = hours.length * hourHeight
-  const canAddShifts = !!participant || !!otherCoachingActivity?.coachId
+  const canAddShifts =
+    (!!participant && !!selectedAuthorization && isAuthorizationSchedulable(selectedAuthorization)) ||
+    !!otherCoachingActivity?.coachId
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -355,11 +383,16 @@ export function WeekScheduler({
                   ? ` · ${coachMap.get(otherCoachingActivity.coachId)?.name || 'Coach'}`
                   : ''}
               </>
-            ) : participant ? (
+            ) : participant && selectedAuthorization ? (
               <>
                 Adding shifts for{' '}
                 <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
+                {' · '}
+                <span className="font-medium text-blue-300">{selectedAuthorization.service}</span>
                 {participant.site ? ` · ${participant.site}` : ''}
+                {selectedAuthorization.status !== 'active' && (
+                  <span className="text-amber-400"> · Authorization not active</span>
+                )}
               </>
             ) : otherCoachingActivity ? (
               'Assign a coach to this assignment before adding calendar blocks.'
@@ -373,11 +406,12 @@ export function WeekScheduler({
               'Select a participant or other coaching assignment from the sidebar to add shifts.'
             )}
           </p>
-          {hoursSummary && participant && (
+          {hoursSummary && participant && selectedAuthorization && (
             <div className="mt-2 flex flex-wrap gap-2 text-sm">
-              {!isCoachingOnlyParticipant(participant) && (
+              {!isCoachingOnlyAuthorization(selectedAuthorization) && (
                 <span className="rounded-full bg-slate-800 px-3 py-1 tabular-nums text-slate-300">
-                  {participant.name}: {formatHoursValue(hoursSummary.totalWorkScheduled)}h work
+                  {participant.name} ({selectedAuthorization.service}):{' '}
+                  {formatHoursValue(hoursSummary.totalWorkScheduled)}h work
                 </span>
               )}
               <span className="rounded-full bg-violet-950/60 px-3 py-1 tabular-nums text-violet-300">
@@ -592,9 +626,14 @@ export function WeekScheduler({
                     const shiftsForEval = regionShifts.map((s) =>
                       dragPreview?.shiftId === s.id ? { ...s, ...dragPreview } : s,
                     )
+                    const shiftAuth =
+                      p && shift.authorizationId
+                        ? p.authorizations.find((a) => a.id === shift.authorizationId)
+                        : undefined
                     const conflicts = getShiftConflicts(
                       shift,
                       p,
+                      shiftAuth,
                       coach,
                       shiftsForEval,
                       dayKey,
@@ -604,8 +643,8 @@ export function WeekScheduler({
                     const multiShiftNotice = hasMultiShiftDayNotice(conflicts)
                     const errorSummary = formatShiftConflictSummary(conflicts)
                     const milestoneLabels =
-                      p && !isOtherCoaching
-                        ? getShiftMilestoneLabels(p, shift.id, shiftsForEval)
+                      shiftAuth && !isOtherCoaching
+                        ? getShiftMilestoneLabels(shiftAuth, shift.id, shiftsForEval)
                         : []
 
                     return (
@@ -631,6 +670,12 @@ export function WeekScheduler({
                         errorLevel={errorLevel}
                         multiShiftNotice={multiShiftNotice}
                         milestoneLabels={milestoneLabels}
+                        authorizationService={
+                          !isOtherCoaching ? shiftAuth?.service : undefined
+                        }
+                        authorizationNumber={
+                          !isOtherCoaching ? shiftAuth?.authNumber : undefined
+                        }
                         errorSummary={errorSummary}
                         onEdit={() => {
                           setIsNewShift(false)

@@ -59,6 +59,7 @@ function parseWriteup(writeup: string): ParsedWriteup {
   const result: ParsedWriteup = { meta: [], entries: [], totals: [] }
   let currentEntry: ParsedEntry | null = null
   let inTotals = false
+  let inAdvice = false
 
   for (const raw of writeup.split('\n')) {
     const line = raw.trimEnd()
@@ -69,6 +70,7 @@ function parseWriteup(writeup: string): ParsedWriteup {
         currentEntry = null
       }
       inTotals = false
+      inAdvice = false
       continue
     }
     if (line === 'WEEKLY TOTALS') {
@@ -77,6 +79,16 @@ function parseWriteup(writeup: string): ParsedWriteup {
         currentEntry = null
       }
       inTotals = true
+      inAdvice = false
+      continue
+    }
+    if (line === 'GENERAL ADVICE') {
+      if (currentEntry) {
+        result.entries.push(currentEntry)
+        currentEntry = null
+      }
+      inTotals = false
+      inAdvice = true
       continue
     }
     if (!line) continue
@@ -85,6 +97,12 @@ function parseWriteup(writeup: string): ParsedWriteup {
       if (currentEntry) result.entries.push(currentEntry)
       currentEntry = { title: line, lines: [] }
       inTotals = false
+      inAdvice = false
+      continue
+    }
+
+    if (inAdvice) {
+      result.closing = result.closing ? `${result.closing} ${line}` : line
       continue
     }
 
@@ -100,11 +118,6 @@ function parseWriteup(writeup: string): ParsedWriteup {
 
     if (line.startsWith('You have ') || line.startsWith('No ')) {
       result.summary = line
-      continue
-    }
-
-    if (line.startsWith('Please arrive')) {
-      result.closing = line
       continue
     }
 
@@ -417,16 +430,33 @@ function drawCompactSchedulePdf(
   }
 
   if (parsed.closing) {
-    if (y + 20 > footerY - 8) {
+    const advicePadX = 10
+    const advicePadY = 10
+    const adviceTitleHeight = 16
+    const adviceLineHeight = 11
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    const adviceBodyWidth = contentWidth - advicePadX * 2
+    const closingLines = doc.splitTextToSize(parsed.closing, adviceBodyWidth)
+    const adviceBoxHeight =
+      advicePadY * 2 + adviceTitleHeight + closingLines.length * adviceLineHeight
+
+    if (y + adviceBoxHeight + 16 > footerY - 8) {
       doc.addPage()
       y = margin
     }
-    y += 4
-    doc.setFont('helvetica', 'italic')
+
+    y += 8
+    doc.setFillColor(...GW_BLUE_LIGHT)
+    doc.roundedRect(margin, y, contentWidth, adviceBoxHeight, 3, 3, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...GW_BLUE)
+    doc.text('GENERAL ADVICE', margin + advicePadX, y + advicePadY + 10)
+    doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    doc.setTextColor(...GW_MUTED)
-    const closingLines = doc.splitTextToSize(parsed.closing, contentWidth)
-    doc.text(closingLines, margin, y)
+    doc.setTextColor(...GW_GRAY)
+    doc.text(closingLines, margin + advicePadX, y + advicePadY + adviceTitleHeight + 4)
   }
 
   const pageCount = doc.getNumberOfPages()

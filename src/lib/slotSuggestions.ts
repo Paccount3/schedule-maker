@@ -1,4 +1,5 @@
-import type { Coach, Participant, Shift } from '../types'
+import type { Authorization, Coach, Participant, Shift } from '../types'
+import { isAuthorizationSchedulable } from './authorizations'
 import {
   COACH_MAX_HOURS,
   getCoachHoursForWeek,
@@ -27,25 +28,38 @@ export interface SuggestedSlot {
   reasons: string[]
 }
 
-export type PreferredShiftPeriod = 'morning' | 'afternoon'
+export type PreferredShiftPeriod = 'morning' | 'afternoon' | 'coach-best'
 
-export const PREFERRED_SHIFT_WINDOWS: Record<
-  PreferredShiftPeriod,
-  { startMinutes: number; endMinutes: number; label: string; shortLabel: string }
-> = {
+export interface PreferredShiftOption {
+  label: string
+  shortLabel: string
+  windowStartMinutes?: number
+  windowEndMinutes?: number
+  useCoachAvailability?: boolean
+}
+
+export const PREFERRED_SHIFT_OPTIONS: Record<PreferredShiftPeriod, PreferredShiftOption> = {
   morning: {
-    startMinutes: 9 * 60,
-    endMinutes: 13 * 60,
     label: 'Morning (9am–1pm)',
     shortLabel: 'Morning',
+    windowStartMinutes: 9 * 60,
+    windowEndMinutes: 13 * 60,
   },
   afternoon: {
-    startMinutes: 14 * 60,
-    endMinutes: 18 * 60,
     label: 'Afternoon (2pm–6pm)',
     shortLabel: 'Afternoon',
+    windowStartMinutes: 14 * 60,
+    windowEndMinutes: 18 * 60,
+  },
+  'coach-best': {
+    label: 'Best for Coach',
+    shortLabel: 'Coach availability',
+    useCoachAvailability: true,
   },
 }
+
+/** @deprecated Use PREFERRED_SHIFT_OPTIONS */
+export const PREFERRED_SHIFT_WINDOWS = PREFERRED_SHIFT_OPTIONS
 
 interface Interval {
   start: number
@@ -106,29 +120,42 @@ function coachBookedOnDay(coachId: string, date: string, shifts: Shift[]): Inter
     .map((s) => ({ start: s.startMinutes, end: s.endMinutes }))
 }
 
+function resolveSearchWindow(
+  coach: Coach,
+  dayKey: keyof Coach['availability'],
+  preferredPeriod: PreferredShiftPeriod,
+): Interval | null {
+  const avail = coach.availability[dayKey]
+  if (!avail) return null
+
+  const coachInterval = { start: avail.startMinutes, end: avail.endMinutes }
+  const option = PREFERRED_SHIFT_OPTIONS[preferredPeriod]
+  if (option.useCoachAvailability) return coachInterval
+  if (option.windowStartMinutes == null || option.windowEndMinutes == null) return null
+
+  return intersectIntervals(coachInterval, {
+    start: option.windowStartMinutes,
+    end: option.windowEndMinutes,
+  })
+}
+
 function dayHasAvailableSlot(
   coach: Coach,
-  participant: Participant,
+  authorization: Authorization,
   date: string,
   shifts: Shift[],
   durationMinutes: number,
   preferredPeriod: PreferredShiftPeriod,
 ): boolean {
-  if (date < participant.authStart || date > participant.authEnd) return false
+  if (!isAuthorizationSchedulable(authorization)) return false
+  if (date < authorization.authStart || date > authorization.authEnd) return false
 
   const dayKey = dayOfWeekFromDate(parseDateInput(date))
-  const avail = coach.availability[dayKey]
-  if (!avail) return false
-
-  const preferred = PREFERRED_SHIFT_WINDOWS[preferredPeriod]
-  const preferredWindow = intersectIntervals(
-    { start: avail.startMinutes, end: avail.endMinutes },
-    { start: preferred.startMinutes, end: preferred.endMinutes },
-  )
-  if (!preferredWindow) return false
+  const searchWindow = resolveSearchWindow(coach, dayKey, preferredPeriod)
+  if (!searchWindow) return false
 
   const booked = mergeIntervals(coachBookedOnDay(coach.id, date, shifts))
-  const windows = freeWindows(preferredWindow, booked, durationMinutes)
+  const windows = freeWindows(searchWindow, booked, durationMinutes)
   if (windows.length === 0) return false
 
   const slotWeekDates = getWeekDates(weekStartForDate(date))
@@ -140,6 +167,7 @@ function dayHasAvailableSlot(
 export function countCoachSlotsForWeek(
   coach: Coach,
   participant: Participant,
+  authorization: Authorization,
   weekDates: string[],
   shifts: Shift[],
   shiftDurationHours: number,
@@ -154,7 +182,7 @@ export function countCoachSlotsForWeek(
     if (
       dayHasAvailableSlot(
         coach,
-        participant,
+        authorization,
         date,
         shifts,
         durationMinutes,
@@ -182,6 +210,7 @@ export interface CoachFitSummary {
 export function rankCoachesForParticipant(
   coaches: Coach[],
   participant: Participant,
+  authorization: Authorization,
   calendarWeekStart: string,
   weekDates: string[],
   shifts: Shift[],
@@ -196,6 +225,7 @@ export function rankCoachesForParticipant(
       const suggestions = suggestShiftSlots(
         coach,
         participant,
+        authorization,
         calendarWeekStart,
         shifts,
         shiftDurationHours,
@@ -206,6 +236,7 @@ export function rankCoachesForParticipant(
       const slotsThisWeek = countCoachSlotsForWeek(
         coach,
         participant,
+        authorization,
         weekDates,
         shifts,
         shiftDurationHours,
@@ -234,6 +265,7 @@ export function rankCoachesForParticipant(
 export function suggestShiftSlots(
   coach: Coach,
   participant: Participant,
+  authorization: Authorization,
   calendarWeekStart: string,
   shifts: Shift[],
   shiftDurationHours: number,
@@ -241,14 +273,16 @@ export function suggestShiftSlots(
   excludeSlots: SuggestedSlot[] = [],
   preferredPeriod: PreferredShiftPeriod = 'morning',
 ): SuggestedSlot[] {
+  if (!isAuthorizationSchedulable(authorization)) return []
+
   const durationMinutes = shiftDurationHours * 60
   const candidates: SuggestedSlot[] = []
   const participantDates = participantBookedDates(participant.id, shifts)
-  const preferred = PREFERRED_SHIFT_WINDOWS[preferredPeriod]
+  const option = PREFERRED_SHIFT_OPTIONS[preferredPeriod]
   const searchDates = getSchedulingSearchDates(
     calendarWeekStart,
-    participant.authStart,
-    participant.authEnd,
+    authorization.authStart,
+    authorization.authEnd,
   )
 
   for (const date of searchDates) {
@@ -256,13 +290,8 @@ export function suggestShiftSlots(
 
     const dayKey = dayOfWeekFromDate(parseDateInput(date))
     const avail = coach.availability[dayKey]
-    if (!avail) continue
-
-    const preferredWindow = intersectIntervals(
-      { start: avail.startMinutes, end: avail.endMinutes },
-      { start: preferred.startMinutes, end: preferred.endMinutes },
-    )
-    if (!preferredWindow) continue
+    const searchWindow = resolveSearchWindow(coach, dayKey, preferredPeriod)
+    if (!searchWindow) continue
 
     const booked = mergeIntervals([
       ...coachBookedOnDay(coach.id, date, shifts),
@@ -271,10 +300,12 @@ export function suggestShiftSlots(
         .map((s) => ({ start: s.startMinutes, end: s.endMinutes })),
     ])
 
-    const windows = freeWindows(preferredWindow, booked, durationMinutes)
+    const windows = freeWindows(searchWindow, booked, durationMinutes)
 
     for (const window of windows) {
-      const reasons: string[] = [preferred.shortLabel]
+      const reasons: string[] = option.useCoachAvailability && avail
+        ? [formatMinutesRange(avail.startMinutes, avail.endMinutes)]
+        : [option.shortLabel]
       let score = 0
 
       if (participant.site && coach.startingLocation === participant.site) {
@@ -346,6 +377,7 @@ export function suggestShiftSlots(
 export function pickBestSlots(
   coach: Coach,
   participant: Participant,
+  authorization: Authorization,
   calendarWeekStart: string,
   shifts: Shift[],
   shiftDurationHours: number,
@@ -355,6 +387,7 @@ export function pickBestSlots(
   return suggestShiftSlots(
     coach,
     participant,
+    authorization,
     calendarWeekStart,
     shifts,
     shiftDurationHours,
@@ -365,7 +398,7 @@ export function pickBestSlots(
 }
 
 export function getSlotShortageHint(
-  participant: Participant,
+  authorization: Authorization,
   calendarWeekStart: string,
   shiftCount: number,
   foundCount: number,
@@ -374,12 +407,12 @@ export function getSlotShortageHint(
 
   const weekDates = getWeekDates(calendarWeekStart)
   const monday = weekDates[0]
-  if (participant.authStart > monday && participant.authStart <= weekDates[6]) {
+  if (authorization.authStart > monday && authorization.authStart <= weekDates[6]) {
     const excluded = weekDates.filter(
-      (d) => d >= calendarWeekStart && d < participant.authStart,
+      (d) => d >= calendarWeekStart && d < authorization.authStart,
     ).length
     if (excluded > 0) {
-      return `Authorization starts ${formatDayHeader(participant.authStart)} — ${excluded} day${excluded !== 1 ? 's' : ''} earlier this week aren't eligible. Set an earlier authorization start for Mon–Thu this week.`
+      return `Authorization starts ${formatDayHeader(authorization.authStart)} — ${excluded} day${excluded !== 1 ? 's' : ''} earlier this week aren't eligible. Set an earlier authorization start for Mon–Thu this week.`
     }
   }
 

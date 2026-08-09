@@ -1,15 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
 import {
+  AUTHORIZATION_STATUS_LABELS,
+  isCoachingOnlyAuthorization,
+  resolveSelectedAuthorization,
+} from '../lib/authorizations'
+import {
   formatHoursValue,
+  getAuthorizationFullyScheduledMessage,
+  getAuthorizationHoursTotal,
   getCoachHoursSummary,
   getCoachSidebarIssueMessages,
   getOtherCoachingHoursForWeek,
-  getParticipantFullyScheduledMessage,
   getParticipantHoursForWeek,
-  getParticipantHoursTotal,
-  isCoachingOnlyParticipant,
-  isParticipantFullyScheduled,
+  isAuthorizationFullyScheduled,
+  authorizationHasAuthIssue,
   participantHasAuthIssue,
   participantHasHoursIssue,
   participantWeekViewVisibilityRules,
@@ -37,6 +42,8 @@ interface SidebarProps {
   onToggleOtherCoachingVisibility: (id: string) => void
   visibleParticipantIds: Set<string>
   onToggleParticipantVisibility: (participantId: string) => void
+  selectedAuthorizationByParticipant: Record<string, string>
+  onSelectAuthorization: (participantId: string, authorizationId: string) => void
 }
 
 function CoachHoursLabel({ assigned, max }: { assigned: number; max: number }) {
@@ -186,7 +193,9 @@ function ParticipantRow({
   weekDates,
   selected,
   visible,
+  selectedAuthorizationId,
   onSelect,
+  onSelectAuthorization,
   onEdit,
   onToggleVisibility,
 }: {
@@ -194,19 +203,38 @@ function ParticipantRow({
   weekDates: string[]
   selected: boolean
   visible: boolean
+  selectedAuthorizationId?: string
   onSelect: () => void
+  onSelectAuthorization: (authorizationId: string) => void
   onEdit: (e: React.MouseEvent) => void
   onToggleVisibility: () => void
 }) {
   const { state } = useStore()
   const [expanded, setExpanded] = useState(false)
-  const weekHours = getParticipantHoursForWeek(participant, weekDates, state.shifts)
-  const totalHours = getParticipantHoursTotal(participant.id, state.shifts)
-  const hasAuthIssue = participantHasAuthIssue(participant, state.shifts)
-  const hasHoursIssue = participantHasHoursIssue(participant, state.shifts)
-  const fullyScheduled = isParticipantFullyScheduled(participant, state.shifts)
-  const fullyScheduledMessage = getParticipantFullyScheduledMessage(participant)
-  const coachingOnly = isCoachingOnlyParticipant(participant)
+  const authorization = resolveSelectedAuthorization(participant, selectedAuthorizationId)
+  const weekHours = authorization
+    ? getParticipantHoursForWeek(authorization.id, weekDates, state.shifts, authorization)
+    : null
+  const totalHours = authorization
+    ? getAuthorizationHoursTotal(authorization.id, state.shifts)
+    : { totalWork: 0, totalCoached: 0 }
+  const hasAuthIssue =
+    participantHasAuthIssue(participant, state.shifts) ||
+    (authorization
+      ? authorizationHasAuthIssue(authorization, participant.id, state.shifts)
+      : false)
+  const hasHoursIssue = participantHasHoursIssue(
+    participant,
+    state.shifts,
+    authorization?.id,
+  )
+  const fullyScheduled =
+    !!authorization &&
+    isAuthorizationFullyScheduled(authorization, participant.id, state.shifts)
+  const fullyScheduledMessage = authorization
+    ? getAuthorizationFullyScheduledMessage(authorization)
+    : ''
+  const coachingOnly = authorization ? isCoachingOnlyAuthorization(authorization) : false
 
   const statLine = (label: string, value: number, suffix: 'worked' | 'coached') => (
     <div className="text-slate-400">
@@ -258,61 +286,89 @@ function ParticipantRow({
         <div className="truncate text-sm font-medium text-slate-100">
           {participant.name || 'Unnamed'}
         </div>
-        {participant.site && (
-          <div className="truncate text-[10px] leading-snug text-slate-500">{participant.site}</div>
-        )}
-        {fullyScheduled && (
-          <div className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-400">
-            {fullyScheduledMessage}
-          </div>
-        )}
+
         {expanded && (
-          <div className="mt-1.5 space-y-0.5 text-[11px] leading-relaxed">
-            {participant.site && (
-              <div className="text-slate-400">
-                <span className="text-slate-500">Site: </span>
-                <span className="text-slate-300">{participant.site}</span>
-              </div>
-            )}
-            <div className="text-slate-400">
-              <span className="text-slate-500">Service: </span>
-              <span className="text-slate-300">{participant.service}</span>
-            </div>
-            {!coachingOnly && statLine('Worked This Week', weekHours.totalWorkScheduled, 'worked')}
-            {!coachingOnly &&
-              fractionLine(
-                'Total Hours Worked',
-                totalHours.totalWork,
-                participant.workingHoursPerWeek,
-                'worked',
-              )}
-            {statLine('Coached Hours This Week', weekHours.coachedScheduled, 'coached')}
-            {fractionLine(
-              'Total Coached Hours',
-              totalHours.totalCoached,
-              participant.coachingHoursPerWeek,
-              'coached',
-            )}
-            {fullyScheduled && (
-              <div className="pt-1 font-medium text-emerald-400">{fullyScheduledMessage}</div>
-            )}
-            <div className={`pt-0.5 ${hasAuthIssue ? 'text-red-400' : 'text-slate-500'}`}>
-              <span className={hasAuthIssue ? 'text-red-400/80' : 'text-slate-500'}>
-                Authorization:{' '}
-              </span>
-              <span className={hasAuthIssue ? 'font-medium text-red-300' : 'text-slate-400'}>
-                {formatAuthRange(participant.authStart, participant.authEnd)}
-              </span>
-              {hasAuthIssue && (
-                <span className="mt-0.5 block text-[10px] text-red-400/90">
-                  Shifts scheduled outside authorization range
+          <div className="mt-2 space-y-2">
+            {selected && participant.authorizations.length > 0 && (
+              <label className="block" onClick={(e) => e.stopPropagation()}>
+                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                  Scheduling authorization
                 </span>
-              )}
-            </div>
-            {participant.notes && (
-              <div className="pt-0.5 text-slate-500">
-                <span className="text-slate-500">Notes: </span>
-                <span className="text-slate-400">{participant.notes}</span>
+                <select
+                  value={authorization?.id ?? ''}
+                  onChange={(e) => onSelectAuthorization(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {participant.authorizations.map((auth) => (
+                    <option key={auth.id} value={auth.id}>
+                      {auth.service} · {AUTHORIZATION_STATUS_LABELS[auth.status]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {authorization && weekHours && (
+              <div className="space-y-0.5 text-[11px] leading-relaxed">
+                {participant.site && (
+                  <div className="truncate text-slate-400">
+                    <span className="text-slate-500">Site: </span>
+                    <span className="text-slate-300">{participant.site}</span>
+                  </div>
+                )}
+                <div className="text-slate-400">
+                  <span className="text-slate-500">Service: </span>
+                  <span className="text-slate-300">{authorization.service}</span>
+                </div>
+                <div className="font-mono text-slate-400">
+                  <span className="text-slate-500">Auth #: </span>
+                  <span className="text-slate-300">{authorization.authNumber}</span>
+                </div>
+                <div className={`${hasAuthIssue ? 'text-red-400' : 'text-slate-400'}`}>
+                  <span className={hasAuthIssue ? 'text-red-400/80' : 'text-slate-500'}>
+                    Dates:{' '}
+                  </span>
+                  <span className={hasAuthIssue ? 'font-medium text-red-300' : 'text-slate-300'}>
+                    {formatAuthRange(authorization.authStart, authorization.authEnd)}
+                  </span>
+                  {authorization.status !== 'active' && (
+                    <span className="mt-0.5 block text-[10px] text-slate-500">
+                      Status: {AUTHORIZATION_STATUS_LABELS[authorization.status]}
+                    </span>
+                  )}
+                  {hasAuthIssue && (
+                    <span className="mt-0.5 block text-[10px] text-red-400/90">
+                      Shifts missing authorization or outside date range
+                    </span>
+                  )}
+                </div>
+
+                {!coachingOnly && statLine('Worked This Week', weekHours.totalWorkScheduled, 'worked')}
+                {!coachingOnly &&
+                  fractionLine(
+                    'Authorization Work Hours',
+                    totalHours.totalWork,
+                    authorization.workingHours,
+                    'worked',
+                  )}
+                {statLine('Coached Hours This Week', weekHours.coachedScheduled, 'coached')}
+                {fractionLine(
+                  'Authorization Coached Hours',
+                  totalHours.totalCoached,
+                  authorization.coachingHours,
+                  'coached',
+                )}
+
+                {fullyScheduled && (
+                  <div className="pt-1 font-medium text-emerald-400">{fullyScheduledMessage}</div>
+                )}
+
+                {participant.notes && (
+                  <div className="pt-0.5 text-slate-500">
+                    <span className="text-slate-500">Notes: </span>
+                    <span className="text-slate-400">{participant.notes}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -446,6 +502,8 @@ export function Sidebar({
   onToggleOtherCoachingVisibility,
   visibleParticipantIds,
   onToggleParticipantVisibility,
+  selectedAuthorizationByParticipant,
+  onSelectAuthorization,
 }: SidebarProps) {
   const { state, addCoach, addParticipant, addOtherCoachingActivity, setSelectedRegionId, addRegion } =
     useStore()
@@ -671,10 +729,14 @@ export function Sidebar({
                     weekDates={weekDates}
                     selected={p.id === selectedParticipantId}
                     visible={visibleParticipantIds.has(p.id)}
+                    selectedAuthorizationId={selectedAuthorizationByParticipant[p.id]}
                     onSelect={() => {
                       onSelectParticipant(p.id)
                       onSelectOtherCoaching('')
                     }}
+                    onSelectAuthorization={(authorizationId) =>
+                      onSelectAuthorization(p.id, authorizationId)
+                    }
                     onToggleVisibility={() => onToggleParticipantVisibility(p.id)}
                     onEdit={(e) => {
                       e.stopPropagation()

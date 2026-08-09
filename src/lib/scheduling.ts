@@ -1,5 +1,10 @@
-import type { Coach, Participant, Shift, TimeRange } from '../types'
+import type { Authorization, Coach, Participant, Shift, TimeRange } from '../types'
 import type { DayOfWeek } from '../types'
+import {
+  authorizationOverlapsRange,
+  isAuthorizationSchedulable,
+  isCoachingOnlyAuthorization,
+} from './authorizations'
 import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, SLOT_MINUTES, toDateInput } from './time'
 
 export interface ShiftConflict {
@@ -12,12 +17,16 @@ export interface ShiftConflict {
     | 'participant_daily_limit'
     | 'over_working_hours'
     | 'over_coaching_hours'
+    | 'missing_authorization'
   message: string
 }
 
 export type ShiftErrorLevel = 'none' | 'info' | 'warning' | 'critical'
 
-const CRITICAL_CONFLICT_TYPES: ShiftConflict['type'][] = ['outside_auth']
+const CRITICAL_CONFLICT_TYPES: ShiftConflict['type'][] = [
+  'outside_auth',
+  'missing_authorization',
+]
 const WARNING_CONFLICT_TYPES: ShiftConflict['type'][] = [
   'coach_unavailable',
   'outside_coach_hours',
@@ -93,15 +102,21 @@ export function participantHasShiftOnDate(
   date: string,
   shifts: Shift[],
   excludeShiftId?: string,
+  authorizationId?: string,
 ): boolean {
   return shifts.some(
-    (s) => s.participantId === participantId && s.date === date && s.id !== excludeShiftId,
+    (s) =>
+      s.participantId === participantId &&
+      s.date === date &&
+      s.id !== excludeShiftId &&
+      (authorizationId === undefined || s.authorizationId === authorizationId),
   )
 }
 
 export function getShiftConflicts(
   shift: Shift,
   participant: Participant | undefined,
+  authorization: Authorization | undefined,
   coach: Coach | undefined,
   allShifts: Shift[],
   dayOfWeek: DayOfWeek,
@@ -110,35 +125,58 @@ export function getShiftConflicts(
   const conflicts: ShiftConflict[] = []
 
   if (participant && shift.participantId) {
-    if (shift.date < participant.authStart || shift.date > participant.authEnd) {
+    if (!shift.authorizationId) {
+      conflicts.push({
+        type: 'missing_authorization',
+        message: 'Shift is not linked to an authorization',
+      })
+    } else if (!authorization) {
+      conflicts.push({
+        type: 'missing_authorization',
+        message: 'Linked authorization was not found',
+      })
+    } else if (shift.date < authorization.authStart || shift.date > authorization.authEnd) {
       conflicts.push({
         type: 'outside_auth',
         message: 'Shift is outside authorization date range',
       })
     }
 
-    if (participantHasShiftOnDate(participant.id, shift.date, allShifts, shift.id)) {
+    if (
+      participantHasShiftOnDate(
+        participant.id,
+        shift.date,
+        allShifts,
+        shift.id,
+        shift.authorizationId,
+      )
+    ) {
       conflicts.push({
         type: 'participant_daily_limit',
         message: MULTI_SHIFT_DAY_MESSAGE,
       })
     }
 
-    const totalHours = getParticipantHoursTotal(participant.id, allShifts)
-    if (
-      !isCoachingOnlyParticipant(participant) &&
-      totalHours.totalWork > participant.workingHoursPerWeek
-    ) {
-      conflicts.push({
-        type: 'over_working_hours',
-        message: 'Out of Working Hours',
-      })
-    }
-    if (shift.type === 'coached' && totalHours.totalCoached > participant.coachingHoursPerWeek) {
-      conflicts.push({
-        type: 'over_coaching_hours',
-        message: 'Out of Coaching Hours',
-      })
+    if (authorization && shift.authorizationId) {
+      const totalHours = getAuthorizationHoursTotal(shift.authorizationId, allShifts)
+      if (
+        !isCoachingOnlyAuthorization(authorization) &&
+        totalHours.totalWork > authorization.workingHours
+      ) {
+        conflicts.push({
+          type: 'over_working_hours',
+          message: 'Out of Working Hours',
+        })
+      }
+      if (
+        shift.type === 'coached' &&
+        totalHours.totalCoached > authorization.coachingHours
+      ) {
+        conflicts.push({
+          type: 'over_coaching_hours',
+          message: 'Out of Coaching Hours',
+        })
+      }
     }
   }
 
@@ -193,18 +231,19 @@ export interface ParticipantHours {
 }
 
 export function getParticipantHoursForWeek(
-  participant: Participant,
+  authorizationId: string,
   weekDates: string[],
   shifts: Shift[],
+  authorization: Authorization,
 ): ParticipantHours {
-  const participantShifts = shifts.filter(
-    (s) => s.participantId === participant.id && weekDates.includes(s.date),
+  const authShifts = shifts.filter(
+    (s) => s.authorizationId === authorizationId && weekDates.includes(s.date),
   )
 
   let soloScheduled = 0
   let coachedScheduled = 0
 
-  for (const shift of participantShifts) {
+  for (const shift of authShifts) {
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     if (shift.type === 'coached') {
       coachedScheduled += hours
@@ -219,8 +258,8 @@ export function getParticipantHoursForWeek(
     soloScheduled,
     coachedScheduled,
     totalWorkScheduled,
-    totalWorkRemaining: participant.workingHoursPerWeek - totalWorkScheduled,
-    coachedRemaining: participant.coachingHoursPerWeek - coachedScheduled,
+    totalWorkRemaining: authorization.workingHours - totalWorkScheduled,
+    coachedRemaining: authorization.coachingHours - coachedScheduled,
   }
 }
 
@@ -229,6 +268,23 @@ export interface ParticipantHoursTotal {
   totalCoached: number
 }
 
+export function getAuthorizationHoursTotal(
+  authorizationId: string,
+  shifts: Shift[],
+): ParticipantHoursTotal {
+  let totalWork = 0
+  let totalCoached = 0
+
+  for (const shift of shifts.filter((s) => s.authorizationId === authorizationId)) {
+    const hours = durationHours(shift.startMinutes, shift.endMinutes)
+    totalWork += hours
+    if (shift.type === 'coached') totalCoached += hours
+  }
+
+  return { totalWork, totalCoached }
+}
+
+/** @deprecated Use getAuthorizationHoursTotal for per-auth totals */
 export function getParticipantHoursTotal(
   participantId: string,
   shifts: Shift[],
@@ -283,63 +339,139 @@ export function getCoachHoursInRange(
 }
 
 export function isCoachingOnlyParticipant(participant: Participant): boolean {
-  return participant.service === 'JC'
+  return participant.authorizations.some((a) => a.service === 'JC')
 }
 
-/** Weeks ahead of the viewed week to show participants whose authorization has not started yet */
+/** Weeks ahead of the viewed week to show authorizations that have not started yet */
 export const PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS = 2
 
 /** User-facing rules for when a participant appears in the sidebar week view */
 export function participantWeekViewVisibilityRules(): string[] {
   return [
-    'Their authorization overlaps the week you are viewing',
+    'An active authorization overlaps the week you are viewing',
     'They have at least one shift scheduled this week',
-    'Their working or coaching hours are not fully scheduled yet',
-    `Their authorization starts within the next ${PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS} weeks`,
+    'An active authorization still has hours to schedule',
+    `An active authorization starts within the next ${PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS} weeks`,
   ]
 }
 
-export function isParticipantHoursComplete(
-  participant: Participant,
+export function isAuthorizationHoursComplete(
+  authorization: Authorization,
   totals: ParticipantHoursTotal,
 ): boolean {
   const coachingDone =
-    participant.coachingHoursPerWeek <= 0 ||
-    totals.totalCoached >= participant.coachingHoursPerWeek
-  if (isCoachingOnlyParticipant(participant)) return coachingDone
+    authorization.coachingHours <= 0 || totals.totalCoached >= authorization.coachingHours
+  if (isCoachingOnlyAuthorization(authorization)) return coachingDone
   const workDone =
-    participant.workingHoursPerWeek <= 0 ||
-    totals.totalWork >= participant.workingHoursPerWeek
+    authorization.workingHours <= 0 || totals.totalWork >= authorization.workingHours
   return workDone && coachingDone
 }
 
 export const PARTICIPANT_FULLY_SCHEDULED_MESSAGE =
-  'All working and coaching hours are scheduled.'
+  'All working and coaching hours are scheduled for this authorization.'
 
 export const PARTICIPANT_FULLY_SCHEDULED_COACHING_ONLY_MESSAGE =
-  'All coaching hours are scheduled.'
+  'All coaching hours are scheduled for this authorization.'
 
-export function getParticipantFullyScheduledMessage(participant: Participant): string {
-  return isCoachingOnlyParticipant(participant)
+export function getAuthorizationFullyScheduledMessage(
+  authorization: Authorization,
+): string {
+  return isCoachingOnlyAuthorization(authorization)
     ? PARTICIPANT_FULLY_SCHEDULED_COACHING_ONLY_MESSAGE
     : PARTICIPANT_FULLY_SCHEDULED_MESSAGE
 }
 
-/** All required hours are scheduled — not over cap and no auth issues */
-export function isParticipantFullyScheduled(participant: Participant, shifts: Shift[]): boolean {
-  if (participantHasAuthIssue(participant, shifts)) return false
-  if (participantHasHoursIssue(participant, shifts)) return false
-  return isParticipantHoursComplete(participant, getParticipantHoursTotal(participant.id, shifts))
+/** @deprecated Use getAuthorizationFullyScheduledMessage */
+export function getParticipantFullyScheduledMessage(participant: Participant): string {
+  const auth = participant.authorizations[0]
+  return auth
+    ? getAuthorizationFullyScheduledMessage(auth)
+    : PARTICIPANT_FULLY_SCHEDULED_MESSAGE
 }
 
-export function isParticipantUpcomingForWeek(
-  participant: Participant,
+export function authorizationHasAuthIssue(
+  authorization: Authorization,
+  participantId: string,
+  shifts: Shift[],
+): boolean {
+  return shifts.some(
+    (s) =>
+      s.participantId === participantId &&
+      s.authorizationId === authorization.id &&
+      (s.date < authorization.authStart || s.date > authorization.authEnd),
+  )
+}
+
+export function authorizationHasHoursIssue(
+  authorization: Authorization,
+  shifts: Shift[],
+): boolean {
+  const totalHours = getAuthorizationHoursTotal(authorization.id, shifts)
+  const workOver =
+    !isCoachingOnlyAuthorization(authorization) &&
+    totalHours.totalWork > authorization.workingHours
+
+  return workOver || totalHours.totalCoached > authorization.coachingHours
+}
+
+export function isAuthorizationFullyScheduled(
+  authorization: Authorization,
+  participantId: string,
+  shifts: Shift[],
+): boolean {
+  if (!isAuthorizationSchedulable(authorization)) return false
+  if (authorizationHasAuthIssue(authorization, participantId, shifts)) return false
+  if (authorizationHasHoursIssue(authorization, shifts)) return false
+  return isAuthorizationHoursComplete(
+    authorization,
+    getAuthorizationHoursTotal(authorization.id, shifts),
+  )
+}
+
+/** @deprecated Use isAuthorizationFullyScheduled for the selected authorization */
+export function isParticipantFullyScheduled(participant: Participant, shifts: Shift[]): boolean {
+  return participant.authorizations.some((auth) =>
+    isAuthorizationFullyScheduled(auth, participant.id, shifts),
+  )
+}
+
+export function isAuthorizationUpcomingForWeek(
+  authorization: Authorization,
   weekEnd: string,
   lookaheadWeeks = PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS,
 ): boolean {
-  if (participant.authStart <= weekEnd) return false
+  if (authorization.authStart <= weekEnd) return false
   const lookaheadEnd = toDateInput(addDays(parseDateInput(weekEnd), lookaheadWeeks * 7))
-  return participant.authStart <= lookaheadEnd
+  return authorization.authStart <= lookaheadEnd
+}
+
+export function isAuthorizationRelevantForWeek(
+  authorization: Authorization,
+  participantId: string,
+  shifts: Shift[],
+  weekDates: string[],
+  lookaheadWeeks = PARTICIPANT_UPCOMING_LOOKAHEAD_WEEKS,
+): boolean {
+  const weekStart = weekDates[0]
+  const weekEnd = weekDates[weekDates.length - 1]
+
+  const hasShiftsThisWeek = shifts.some(
+    (s) =>
+      s.participantId === participantId &&
+      s.authorizationId === authorization.id &&
+      weekDates.includes(s.date),
+  )
+  if (hasShiftsThisWeek) return true
+
+  if (authorization.status !== 'active') return false
+
+  const overlaps = authorizationOverlapsRange(authorization, weekStart, weekEnd)
+  if (overlaps) {
+    const totals = getAuthorizationHoursTotal(authorization.id, shifts)
+    if (!isAuthorizationHoursComplete(authorization, totals)) return true
+  }
+
+  return isAuthorizationUpcomingForWeek(authorization, weekEnd, lookaheadWeeks)
 }
 
 /** Whether a participant should appear in the sidebar for the viewed calendar week */
@@ -347,44 +479,36 @@ export function isParticipantRelevantForWeek(
   participant: Participant,
   shifts: Shift[],
   weekDates: string[],
-  options?: { lookaheadWeeks?: number; totals?: ParticipantHoursTotal },
 ): boolean {
-  const weekStart = weekDates[0]
-  const weekEnd = weekDates[weekDates.length - 1]
-
-  const authOverlaps =
-    participant.authStart <= weekEnd && participant.authEnd >= weekStart
-
   const hasShiftsThisWeek = shifts.some(
     (s) => s.participantId === participant.id && weekDates.includes(s.date),
   )
+  if (hasShiftsThisWeek) return true
 
-  const totals = options?.totals ?? getParticipantHoursTotal(participant.id, shifts)
-  const complete = isParticipantHoursComplete(participant, totals)
-  const upcoming = isParticipantUpcomingForWeek(
-    participant,
-    weekEnd,
-    options?.lookaheadWeeks,
+  return participant.authorizations.some((auth) =>
+    isAuthorizationRelevantForWeek(auth, participant.id, shifts, weekDates),
   )
-
-  return authOverlaps || hasShiftsThisWeek || !complete || upcoming
 }
 
 export function participantHasAuthIssue(participant: Participant, shifts: Shift[]): boolean {
-  return shifts.some(
-    (s) =>
-      s.participantId === participant.id &&
-      (s.date < participant.authStart || s.date > participant.authEnd),
-  )
+  return shifts.some((s) => {
+    if (s.participantId !== participant.id) return false
+    if (!s.authorizationId) return true
+    const auth = participant.authorizations.find((a) => a.id === s.authorizationId)
+    if (!auth) return true
+    return s.date < auth.authStart || s.date > auth.authEnd
+  })
 }
 
-export function participantHasHoursIssue(participant: Participant, shifts: Shift[]): boolean {
-  const totalHours = getParticipantHoursTotal(participant.id, shifts)
-  const workOver =
-    !isCoachingOnlyParticipant(participant) &&
-    totalHours.totalWork > participant.workingHoursPerWeek
-
-  return workOver || totalHours.totalCoached > participant.coachingHoursPerWeek
+export function participantHasHoursIssue(
+  participant: Participant,
+  shifts: Shift[],
+  authorizationId?: string,
+): boolean {
+  const auths = authorizationId
+    ? participant.authorizations.filter((a) => a.id === authorizationId)
+    : participant.authorizations
+  return auths.some((auth) => authorizationHasHoursIssue(auth, shifts))
 }
 
 export function formatHoursValue(hours: number): string {
@@ -392,13 +516,13 @@ export function formatHoursValue(hours: number): string {
 }
 
 export function getShiftMilestoneLabels(
-  participant: Participant,
+  authorization: Authorization,
   shiftId: string,
   shifts: Shift[],
 ): string[] {
-  const coachingOnly = isCoachingOnlyParticipant(participant)
+  const coachingOnly = isCoachingOnlyAuthorization(authorization)
   const ordered = shifts
-    .filter((s) => s.participantId === participant.id)
+    .filter((s) => s.authorizationId === authorization.id)
     .sort((a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes)
 
   let cumWork = 0
@@ -428,18 +552,18 @@ export function getShiftMilestoneLabels(
 
     if (
       !coachingOnly &&
-      participant.workingHoursPerWeek > 0 &&
-      workBefore < participant.workingHoursPerWeek &&
-      cumWork >= participant.workingHoursPerWeek
+      authorization.workingHours > 0 &&
+      workBefore < authorization.workingHours &&
+      cumWork >= authorization.workingHours
     ) {
       labels.push('Last working shift')
     }
 
     if (
       s.type === 'coached' &&
-      participant.coachingHoursPerWeek > 0 &&
-      coachedBefore < participant.coachingHoursPerWeek &&
-      cumCoached >= participant.coachingHoursPerWeek
+      authorization.coachingHours > 0 &&
+      coachedBefore < authorization.coachingHours &&
+      cumCoached >= authorization.coachingHours
     ) {
       labels.push('Last coaching shift')
     }
@@ -515,6 +639,9 @@ export function getCoachSidebarIssueMessages(
     const conflicts = getShiftConflicts(
       shift,
       participant,
+      participant && shift.authorizationId
+        ? participant.authorizations.find((a) => a.id === shift.authorizationId)
+        : undefined,
       coach,
       shifts,
       dayKey,
@@ -672,6 +799,7 @@ export function buildCopiedShiftsFromPreviousWeek(
 
     const copy: Omit<Shift, 'id'> = {
       participantId: shift.participantId,
+      authorizationId: shift.authorizationId,
       date: newDate,
       startMinutes: shift.startMinutes,
       endMinutes: shift.endMinutes,
@@ -700,6 +828,7 @@ export function splitShiftForPartialCoverage(
 
   const coachedHalf: Omit<Shift, 'id'> = {
     participantId: shift.participantId,
+    authorizationId: shift.authorizationId,
     date: shift.date,
     startMinutes: shift.startMinutes,
     endMinutes: midMinutes,
@@ -710,6 +839,7 @@ export function splitShiftForPartialCoverage(
 
   const soloHalf: Omit<Shift, 'id'> = {
     participantId: shift.participantId,
+    authorizationId: shift.authorizationId,
     date: shift.date,
     startMinutes: midMinutes,
     endMinutes: shift.endMinutes,

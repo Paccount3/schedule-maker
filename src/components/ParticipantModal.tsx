@@ -1,23 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Participant, ParticipantService } from '../types'
+import type { Participant } from '../types'
 import {
-  PARTICIPANT_AUTH_NUMBER_LENGTH,
   PARTICIPANT_CHECK_ADDRESS_MAX,
   PARTICIPANT_NOTES_MAX,
-  PARTICIPANT_SERVICES,
-  DEFAULT_PARTICIPANT_AUTH_NUMBER,
 } from '../types'
 import { useStore } from '../store/useStore'
+import { resolveSelectedAuthorization } from '../lib/authorizations'
 import { hexToRgba } from '../lib/colors'
 import { filterCoachesByRegion } from '../lib/regions'
-import {
-  getCoachHoursSummary,
-  isCoachingOnlyParticipant,
-} from '../lib/scheduling'
+import { getCoachHoursSummary } from '../lib/scheduling'
 import {
   getSlotShortageHint,
   pickBestSlots,
-  PREFERRED_SHIFT_WINDOWS,
+  PREFERRED_SHIFT_OPTIONS,
   rankCoachesForParticipant,
   type PreferredShiftPeriod,
   type SuggestedSlot,
@@ -30,12 +25,13 @@ import {
   weekStartForDate,
 } from '../lib/time'
 import { Modal } from './Modal'
+import { AuthorizationsEditor, validateAuthorizations } from './AuthorizationsEditor'
 import { CalendarScheduleHint } from './CalendarScheduleHint'
-import { DateSelect } from './DateSelect'
-import { AddressAutocomplete } from './AddressAutocomplete'
 
 const inputClass =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
+
+const NO_COACH_ID = ''
 
 interface ParticipantModalProps {
   participant: Participant
@@ -48,8 +44,15 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   const [participant, setParticipant] = useState(initial)
 
   const [shiftDurationHours, setShiftDurationHours] = useState(isNew ? 4 : 3)
-  const [shiftCount, setShiftCount] = useState(
-    isNew ? 4 : Math.max(1, Math.ceil(initial.coachingHoursPerWeek / 3)),
+  const [shiftCount, setShiftCount] = useState(() => {
+    const auth = initial.authorizations[0]
+    return isNew ? 4 : Math.max(1, Math.ceil((auth?.coachingHours ?? 20) / 3))
+  })
+  const [planningAuthorizationId, setPlanningAuthorizationId] = useState(
+    () =>
+      initial.authorizations.find((a) => a.status === 'active')?.id ??
+      initial.authorizations[0]?.id ??
+      '',
   )
   const [selectedCoachId, setSelectedCoachId] = useState<string>(() => {
     const coaches = filterCoachesByRegion(state.coaches, initial.regionId)
@@ -58,15 +61,12 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set())
   const [planShifts, setPlanShifts] = useState(isNew ?? false)
   const [preferredPeriod, setPreferredPeriod] = useState<PreferredShiftPeriod>('morning')
-  const [fieldErrors, setFieldErrors] = useState<{
-    name?: string
-    site?: string
-    authStart?: string
-    authEnd?: string
-    authNumber?: string
-  }>({})
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const coachingOnly = isCoachingOnlyParticipant(participant)
+  const planningAuthorization = useMemo(
+    () => resolveSelectedAuthorization(participant, planningAuthorizationId),
+    [participant, planningAuthorizationId],
+  )
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
   const regionCoaches = useMemo(
@@ -74,28 +74,39 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     [state.coaches, participant.regionId],
   )
 
-  const coachRankings = useMemo(
-    () =>
-      rankCoachesForParticipant(
-        regionCoaches,
-        participant,
-        state.weekStart,
-        weekDates,
-        state.shifts,
-        shiftDurationHours,
-        shiftCount,
-        preferredPeriod,
-      ),
-    [regionCoaches, participant, state.weekStart, weekDates, state.shifts, shiftDurationHours, shiftCount, preferredPeriod],
-  )
+  const coachRankings = useMemo(() => {
+    if (!planningAuthorization) return []
+    return rankCoachesForParticipant(
+      regionCoaches,
+      participant,
+      planningAuthorization,
+      state.weekStart,
+      weekDates,
+      state.shifts,
+      shiftDurationHours,
+      shiftCount,
+      preferredPeriod,
+    )
+  }, [
+    regionCoaches,
+    participant,
+    planningAuthorization,
+    state.weekStart,
+    weekDates,
+    state.shifts,
+    shiftDurationHours,
+    shiftCount,
+    preferredPeriod,
+  ])
 
   const selectedCoach = regionCoaches.find((c) => c.id === selectedCoachId)
 
   const suggestedSlots = useMemo(() => {
-    if (!selectedCoach || !planShifts) return []
+    if (!selectedCoach || !planShifts || !planningAuthorization) return []
     return pickBestSlots(
       selectedCoach,
       participant,
+      planningAuthorization,
       state.weekStart,
       state.shifts,
       shiftDurationHours,
@@ -105,6 +116,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   }, [
     selectedCoach,
     participant,
+    planningAuthorization,
     state.weekStart,
     state.shifts,
     shiftDurationHours,
@@ -122,6 +134,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   }, [suggestedSlots, planShifts, selectedCoachId, shiftDurationHours, shiftCount, preferredPeriod])
 
   useEffect(() => {
+    if (!selectedCoachId) return
     if (coachRankings.length > 0 && !coachRankings.find((r) => r.coach.id === selectedCoachId)) {
       setSelectedCoachId(coachRankings[0].coach.id)
     }
@@ -132,30 +145,10 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   const willScheduleOnSave = planShifts && selectedSlots.length > 0 && !!selectedCoach
 
   const save = () => {
-    const errors: {
-      name?: string
-      site?: string
-      authStart?: string
-      authEnd?: string
-      authNumber?: string
-    } = {}
+    const errors: Record<string, string> = {}
     if (!participant.name.trim()) errors.name = 'Name is required'
     if (!participant.site.trim()) errors.site = 'Work site is required'
-    if (!participant.authStart?.trim()) errors.authStart = 'Authorization start is required'
-    if (!participant.authEnd?.trim()) errors.authEnd = 'Authorization end is required'
-    const authNumber = participant.authNumber?.trim() ?? ''
-    if (!authNumber) {
-      errors.authNumber = 'Authorization number is required'
-    } else if (authNumber.length !== PARTICIPANT_AUTH_NUMBER_LENGTH) {
-      errors.authNumber = `Authorization number must be exactly ${PARTICIPANT_AUTH_NUMBER_LENGTH} characters`
-    }
-    if (
-      participant.authStart?.trim() &&
-      participant.authEnd?.trim() &&
-      participant.authEnd < participant.authStart
-    ) {
-      errors.authEnd = 'End date must be on or after the start date'
-    }
+    Object.assign(errors, validateAuthorizations(participant))
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
       return
@@ -163,10 +156,11 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
 
     updateParticipant(participant)
 
-    if (planShifts && selectedSlots.length > 0 && selectedCoach) {
+    if (planShifts && selectedSlots.length > 0 && selectedCoach && planningAuthorization) {
       addShifts(
         selectedSlots.map((slot) => ({
           participantId: participant.id,
+          authorizationId: planningAuthorization.id,
           date: slot.date,
           startMinutes: slot.startMinutes,
           endMinutes: slot.endMinutes,
@@ -217,29 +211,18 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
       selectedSlots.filter((s) => weekDates.includes(s.date)).length * shiftDurationHours
     : 0
 
-  const slotShortageHint = getSlotShortageHint(
-    participant,
-    state.weekStart,
-    shiftCount,
-    suggestedSlots.length,
-  )
+  const slotShortageHint = planningAuthorization
+    ? getSlotShortageHint(
+        planningAuthorization,
+        state.weekStart,
+        shiftCount,
+        suggestedSlots.length,
+      )
+    : null
 
   const slotsSpanWeeks =
     suggestedSlots.length > 0 &&
     new Set(suggestedSlots.map((s) => weekStartForDate(s.date))).size > 1
-
-  const setService = (service: ParticipantService) => {
-    setParticipant((current) => ({
-      ...current,
-      service,
-      workingHoursPerWeek:
-        service === 'JC'
-          ? 0
-          : current.workingHoursPerWeek === 0
-            ? 40
-            : current.workingHoursPerWeek,
-    }))
-  }
 
   return (
     <Modal
@@ -292,7 +275,11 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
               placeholder="Participant name"
               value={participant.name}
               onChange={(e) => {
-                setFieldErrors((prev) => ({ ...prev, name: undefined }))
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.name
+                  return next
+                })
                 setParticipant({ ...participant, name: e.target.value })
               }}
             />
@@ -314,39 +301,28 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
               ))}
             </select>
           </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-400">Service</span>
-            <select
-              className={`${inputClass} mt-1`}
-              value={participant.service}
-              onChange={(e) => setService(e.target.value as ParticipantService)}
-            >
-              {PARTICIPANT_SERVICES.map((service) => (
-                <option key={service} value={service}>
-                  {service}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
+          <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-slate-400">
               Site <span className="text-red-400">*</span>
             </span>
-            <AddressAutocomplete
-              className={`${inputClass} mt-1`}
+            <input
+              className={`${inputClass} mt-1 ${fieldErrors.site ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
               placeholder="Work site address"
               value={participant.site}
-              invalid={!!fieldErrors.site}
-              onChange={(site) => {
-                setFieldErrors((prev) => ({ ...prev, site: undefined }))
-                setParticipant({ ...participant, site })
+              onChange={(e) => {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.site
+                  return next
+                })
+                setParticipant({ ...participant, site: e.target.value })
               }}
             />
             {fieldErrors.site && (
               <span className="mt-1 block text-xs text-red-400">{fieldErrors.site}</span>
             )}
           </label>
-          <label className="block">
+          <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-slate-400">Site Contact</span>
             <input
               className={`${inputClass} mt-1`}
@@ -357,99 +333,20 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
               }
             />
           </label>
-          {!coachingOnly && (
-            <label className="block">
-              <span className="text-xs font-medium text-slate-400">Working Hours / Week</span>
-              <input
-                type="number"
-                min={1}
-                className={`${inputClass} mt-1`}
-                value={participant.workingHoursPerWeek}
-                onChange={(e) =>
-                  setParticipant({ ...participant, workingHoursPerWeek: Number(e.target.value) })
-                }
-              />
-            </label>
-          )}
-          <label className={`block ${coachingOnly ? 'sm:col-span-2' : ''}`}>
-            <span className="text-xs font-medium text-slate-400">Coaching Hours / Week</span>
-            <input
-              type="number"
-              min={0}
-              className={`${inputClass} mt-1`}
-              value={participant.coachingHoursPerWeek}
-              onChange={(e) => {
-                const coachingHoursPerWeek = Number(e.target.value)
-                setParticipant({ ...participant, coachingHoursPerWeek })
-                if (isNew) {
-                  setShiftCount(Math.max(1, Math.ceil(coachingHoursPerWeek / shiftDurationHours)))
-                }
-              }}
-            />
-            {coachingOnly && (
-              <span className="mt-1 block text-[10px] text-slate-500">
-                JC participants only require coaching hours.
-              </span>
-            )}
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-400">
-              Authorization Start <span className="text-red-400">*</span>
-            </span>
-            <DateSelect
-              className={`mt-1 ${fieldErrors.authStart ? '[&>button]:border-red-500' : ''}`}
-              value={participant.authStart}
-              onChange={(authStart) => {
-                setParticipant({ ...participant, authStart })
-                setFieldErrors((e) => ({ ...e, authStart: undefined, authEnd: undefined }))
-              }}
-            />
-            {fieldErrors.authStart && (
-              <span className="mt-1 block text-xs text-red-400">{fieldErrors.authStart}</span>
-            )}
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-slate-400">
-              Authorization End <span className="text-red-400">*</span>
-            </span>
-            <DateSelect
-              className={`mt-1 ${fieldErrors.authEnd ? '[&>button]:border-red-500' : ''}`}
-              value={participant.authEnd}
-              onChange={(authEnd) => {
-                setParticipant({ ...participant, authEnd })
-                setFieldErrors((e) => ({ ...e, authEnd: undefined }))
-              }}
-            />
-            {fieldErrors.authEnd && (
-              <span className="mt-1 block text-xs text-red-400">{fieldErrors.authEnd}</span>
-            )}
-            <span className="mt-1 block text-[10px] text-slate-500">
-              Default authorization period is 90 days.
-            </span>
-          </label>
+          <AuthorizationsEditor
+            participant={participant}
+            onChange={setParticipant}
+            fieldErrors={fieldErrors}
+            onClearFieldError={(key) =>
+              setFieldErrors((prev) => {
+                const next = { ...prev }
+                delete next[key]
+                return next
+              })
+            }
+          />
           <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-400">
-              Authorization Number <span className="text-red-400">*</span>
-            </span>
-            <input
-              className={`${inputClass} mt-1 font-mono tracking-wider ${fieldErrors.authNumber ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-              placeholder={DEFAULT_PARTICIPANT_AUTH_NUMBER}
-              value={participant.authNumber}
-              maxLength={PARTICIPANT_AUTH_NUMBER_LENGTH}
-              onChange={(e) => {
-                setFieldErrors((prev) => ({ ...prev, authNumber: undefined }))
-                setParticipant({ ...participant, authNumber: e.target.value })
-              }}
-            />
-            {fieldErrors.authNumber && (
-              <span className="mt-1 block text-xs text-red-400">{fieldErrors.authNumber}</span>
-            )}
-            <span className="mt-1 block text-[10px] text-slate-500">
-              {PARTICIPANT_AUTH_NUMBER_LENGTH} characters · default {DEFAULT_PARTICIPANT_AUTH_NUMBER}
-            </span>
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-400">Best Address for Checks</span>
+            <span className="text-xs font-medium text-slate-400">Best Participant Address for Checks</span>
             <textarea
               className={`${inputClass} mt-1 min-h-[3.25rem] resize-y`}
               placeholder="Street address, city, state, ZIP"
@@ -470,36 +367,122 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
         </div>
 
         {(isNew || planShifts) && (
-          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-200">Schedule coached shifts</h4>
-              {!isNew && (
-                <button
-                  onClick={() => setPlanShifts(!planShifts)}
-                  className="text-xs text-slate-400 hover:text-slate-200"
-                >
-                  {planShifts ? 'Hide' : 'Show'}
-                </button>
+          <>
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-slate-200">Assign coach</h4>
+                {!isNew && (
+                  <button
+                    type="button"
+                    onClick={() => setPlanShifts(false)}
+                    className="text-xs text-slate-400 hover:text-slate-200"
+                  >
+                    Hide
+                  </button>
+                )}
+              </div>
+              {regionCoaches.length === 0 ? (
+                <p className="text-sm text-amber-400">Add a coach in this region to assign shifts.</p>
+              ) : (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCoachId(NO_COACH_ID)}
+                    className={`flex w-full items-center rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                      selectedCoachId === NO_COACH_ID
+                        ? 'border-slate-500 bg-slate-800/80'
+                        : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="font-medium text-slate-300">NO COACH</span>
+                    <span className="ml-2 text-xs text-slate-500">
+                      Skip scheduling — assign a coach later on the calendar
+                    </span>
+                  </button>
+                  {coachRankings.map(
+                    ({ coach, assigned, maxHours, fitsAll, sameSite, slotCount }) => {
+                      const selected = selectedCoachId === coach.id
+                      const maxDisplay = Math.round(maxHours * 10) / 10
+                      return (
+                        <button
+                          key={coach.id}
+                          type="button"
+                          onClick={() => setSelectedCoachId(coach.id)}
+                          className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                            selected
+                              ? 'border-blue-500 bg-blue-950/40'
+                              : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: coach.color }}
+                            />
+                            <span className="text-slate-200">{coach.name || 'Unnamed'}</span>
+                            <span className="text-xs text-slate-500">{coach.startingLocation}</span>
+                            {sameSite && (
+                              <span className="rounded bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                                Same site
+                              </span>
+                            )}
+                            {!fitsAll && (
+                              <span className="rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                                Limited slots
+                              </span>
+                            )}
+                          </span>
+                          <span className="flex items-center gap-3 text-xs tabular-nums">
+                            <span className="text-slate-500">{slotCount} slots found</span>
+                            <span
+                              className={
+                                maxHours > 0 && assigned > maxHours
+                                  ? 'text-red-400'
+                                  : maxHours > 0 && assigned >= maxHours * 0.75
+                                    ? 'text-amber-400'
+                                    : 'text-slate-400'
+                              }
+                            >
+                              {Math.round(assigned * 10) / 10}/{maxDisplay}
+                            </span>
+                          </span>
+                        </button>
+                      )
+                    },
+                  )}
+                </div>
               )}
             </div>
 
-            {planShifts && (
-              <div className="space-y-4">
+            {selectedCoachId && (
+              <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
+                <h4 className="mb-3 text-sm font-semibold text-slate-200">Schedule coached shifts</h4>
+                <div className="space-y-4">
+                {participant.authorizations.length > 1 && (
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-400">
+                      Schedule for authorization
+                    </span>
+                    <select
+                      className={`${inputClass} mt-1`}
+                      value={planningAuthorizationId}
+                      onChange={(e) => setPlanningAuthorizationId(e.target.value)}
+                    >
+                      {participant.authorizations.map((auth, index) => (
+                        <option key={auth.id} value={auth.id}>
+                          {auth.service} · {auth.status} · Auth {index + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <div className="grid gap-3 sm:grid-cols-3">
                   <label className="block">
                     <span className="text-xs font-medium text-slate-400">Shift duration (hours)</span>
                     <select
                       className={`${inputClass} mt-1`}
                       value={shiftDurationHours}
-                      onChange={(e) => {
-                        const h = Number(e.target.value)
-                        setShiftDurationHours(h)
-                        if (isNew) {
-                          setShiftCount(
-                            Math.max(1, Math.ceil(participant.coachingHoursPerWeek / h)),
-                          )
-                        }
-                      }}
+                      onChange={(e) => setShiftDurationHours(Number(e.target.value))}
                     >
                       {[1, 2, 3, 4, 5, 6, 8].map((h) => (
                         <option key={h} value={h}>
@@ -535,116 +518,55 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
                   </div>
                 </div>
 
-                {regionCoaches.length === 0 ? (
-                  <p className="text-sm text-amber-400">Add a coach in this region to assign shifts.</p>
-                ) : (
-                  <>
-                    <div>
-                      <span className="text-xs font-medium text-slate-400">Assign to coach</span>
-                      <div className="mt-2 space-y-1">
-                        {coachRankings.map(
-                          ({ coach, assigned, maxHours, fitsAll, sameSite, slotCount }) => {
-                            const selected = selectedCoachId === coach.id
-                            const maxDisplay = Math.round(maxHours * 10) / 10
-                            return (
-                              <button
-                                key={coach.id}
-                                onClick={() => setSelectedCoachId(coach.id)}
-                                className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                                  selected
-                                    ? 'border-blue-500 bg-blue-950/40'
-                                    : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800'
-                                }`}
-                              >
-                                <span className="flex items-center gap-2">
-                                  <span
-                                    className="h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: coach.color }}
-                                  />
-                                  <span className="text-slate-200">{coach.name || 'Unnamed'}</span>
-                                  <span className="text-xs text-slate-500">
-                                    {coach.startingLocation}
-                                  </span>
-                                  {sameSite && (
-                                    <span className="rounded bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                                      Same site
-                                    </span>
-                                  )}
-                                  {!fitsAll && (
-                                    <span className="rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                                      Limited slots
-                                    </span>
-                                  )}
-                                </span>
-                                <span className="flex items-center gap-3 text-xs tabular-nums">
-                                  <span className="text-slate-500">{slotCount} slots found</span>
-                                  <span
-                                    className={
-                                      maxHours > 0 && assigned > maxHours
-                                        ? 'text-red-400'
-                                        : maxHours > 0 && assigned >= maxHours * 0.75
-                                          ? 'text-amber-400'
-                                          : 'text-slate-400'
-                                    }
-                                  >
-                                    {Math.round(assigned * 10) / 10}/{maxDisplay}
-                                  </span>
-                                </span>
-                              </button>
-                            )
-                          },
-                        )}
-                      </div>
-                    </div>
-
-                    {selectedCoach && coachSummary && (
-                      <div
-                        className="rounded-md px-3 py-2 text-sm"
-                        style={{
-                          backgroundColor: hexToRgba(selectedCoach.color, 0.1),
-                          borderLeft: `3px solid ${selectedCoach.color}`,
-                        }}
-                      >
-                        <span className="font-medium text-slate-200">{selectedCoach.name}</span>
-                        <span className="ml-2 tabular-nums text-slate-400">
-                          currently {coachSummary.assigned}/{coachSummary.max}h
-                          {selectedSlots.length > 0 && (
-                            <span className="text-slate-300">
-                              {' '}
-                              → {projectedCoachHours}/{coachSummary.max}h after scheduling
-                            </span>
-                          )}
+                {selectedCoach && coachSummary && (
+                  <div
+                    className="rounded-md px-3 py-2 text-sm"
+                    style={{
+                      backgroundColor: hexToRgba(selectedCoach.color, 0.1),
+                      borderLeft: `3px solid ${selectedCoach.color}`,
+                    }}
+                  >
+                    <span className="font-medium text-slate-200">{selectedCoach.name}</span>
+                    <span className="ml-2 tabular-nums text-slate-400">
+                      currently {coachSummary.assigned}/{coachSummary.max}h
+                      {selectedSlots.length > 0 && (
+                        <span className="text-slate-300">
+                          {' '}
+                          → {projectedCoachHours}/{coachSummary.max}h after scheduling
                         </span>
-                      </div>
-                    )}
+                      )}
+                    </span>
+                  </div>
+                )}
 
-                    <div>
+                <div>
                       <span className="text-xs font-medium text-slate-400">Preferred shifts</span>
-                      <div className="mt-1 flex gap-2">
-                        {(Object.keys(PREFERRED_SHIFT_WINDOWS) as PreferredShiftPeriod[]).map(
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {(Object.keys(PREFERRED_SHIFT_OPTIONS) as PreferredShiftPeriod[]).map(
                           (period) => {
-                            const window = PREFERRED_SHIFT_WINDOWS[period]
+                            const option = PREFERRED_SHIFT_OPTIONS[period]
                             const active = preferredPeriod === period
                             return (
                               <button
                                 key={period}
                                 type="button"
                                 onClick={() => setPreferredPeriod(period)}
-                                className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                                className={`min-w-0 flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                                   active
                                     ? 'border-blue-500 bg-blue-950/50 text-blue-200'
                                     : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:bg-slate-800'
                                 }`}
                               >
-                                {window.label}
+                                {option.label}
                               </button>
                             )
                           },
                         )}
                       </div>
                       <p className="mt-1 text-[10px] text-slate-500">
-                        Only shows times when the coach is available during this window (varies by
-                        day)
+                        {preferredPeriod === 'coach-best'
+                          ? 'Uses the selected coach\u2019s full availability each day (not limited to morning or afternoon).'
+                          : 'Only shows times when the coach is available during this window (varies by day).'}
                       </p>
                     </div>
 
@@ -662,10 +584,17 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
                       )}
                       {suggestedSlots.length === 0 ? (
                         <p className="mt-2 text-sm text-slate-500">
-                          No open {PREFERRED_SHIFT_WINDOWS[preferredPeriod].shortLabel.toLowerCase()}{' '}
+                          No open{' '}
+                          {preferredPeriod === 'coach-best'
+                            ? 'coach availability'
+                            : PREFERRED_SHIFT_OPTIONS[preferredPeriod].shortLabel.toLowerCase()}{' '}
                           slots fit {shiftDurationHours}h shifts. Try{' '}
-                          {preferredPeriod === 'morning' ? 'afternoon' : 'morning'}, another coach,
-                          or a shorter duration.
+                          {preferredPeriod === 'coach-best'
+                            ? 'morning or afternoon'
+                            : preferredPeriod === 'morning'
+                              ? 'afternoon or best for coach'
+                              : 'morning or best for coach'}
+                          , another coach, or a shorter duration.
                         </p>
                       ) : (
                         <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
@@ -708,11 +637,20 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
                         </div>
                       )}
                     </div>
-                  </>
-                )}
+                </div>
               </div>
             )}
-          </div>
+          </>
+        )}
+
+        {!isNew && !planShifts && regionCoaches.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPlanShifts(true)}
+            className="text-sm text-blue-400 hover:text-blue-300"
+          >
+            Schedule coached shifts…
+          </button>
         )}
 
         <label className="block">

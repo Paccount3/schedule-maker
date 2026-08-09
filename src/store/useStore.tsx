@@ -41,6 +41,7 @@ interface StoreContextValue {
   removeShift: (id: string) => void
   createQuickShift: (
     participantId: string,
+    authorizationId: string,
     date: string,
     startMinutes: number,
     endMinutes: number,
@@ -223,8 +224,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }),
     removeShift: (id) =>
       update((s) => ({ ...s, shifts: s.shifts.filter((x) => x.id !== id) })),
-    createQuickShift: (participantId, date, startMinutes, endMinutes, type = 'solo') => {
-      const shift = createShift(participantId, date, startMinutes, endMinutes, type)
+    createQuickShift: (participantId, authorizationId, date, startMinutes, endMinutes, type = 'solo') => {
+      const shift = createShift(participantId, authorizationId, date, startMinutes, endMinutes, type)
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
       return shift
     },

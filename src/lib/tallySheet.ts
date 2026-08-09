@@ -1,4 +1,5 @@
 import type { Participant, ParticipantService, Shift } from '../types'
+import { getAuthorizationById } from './authorizations'
 import { durationHours, parseDateInput, toDateInput } from './time'
 
 export interface TallySheetHourRow {
@@ -43,9 +44,11 @@ const SERVICE_TALLY_LABELS: Record<ParticipantService, string> = {
   CPO: 'Community Placement Opportunity',
   JC: 'Job Coaching',
   'LVL UP': 'Level Up',
-  Module: 'Module',
+  'Interview Prep': 'Interview Prep',
+  'Job Exploration': 'Job Exploration',
   Orientation: 'Orientation',
-  Other: 'Other',
+  'Other Module': 'Other Module',
+  'Other Service': 'Other Service',
 }
 
 function formatShortDate(dateStr: string): string {
@@ -141,9 +144,16 @@ export function buildTallySheet(
       ? [{ date: endDate, dateLabel: formatShortDate(endDate), units: 1 }]
       : []
 
+  const rangeShifts = shifts.filter(
+    (s) => s.participantId === participant.id && s.date >= startDate && s.date <= endDate,
+  )
+  const primaryAuth =
+    getAuthorizationById(participant, rangeShifts.find((s) => s.authorizationId)?.authorizationId) ??
+    participant.authorizations[0]
+
   return recalculateTallySheet({
-    authNumber: participant.authNumber,
-    serviceLabel: serviceTallyLabel(participant.service),
+    authNumber: primaryAuth?.authNumber ?? '',
+    serviceLabel: serviceTallyLabel(primaryAuth?.service ?? 'Other Service'),
     consumerName: participant.name || 'Unnamed',
     staffName: '',
     dorsCounselor: '',

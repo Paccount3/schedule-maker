@@ -42,18 +42,28 @@ export const DEFAULT_REGIONS: Region[] = [
   { id: 'west-region', name: 'West Region' },
 ]
 
+export type AuthorizationStatus = 'active' | 'completed' | 'closed_early' | 'cancelled'
+
+export interface Authorization {
+  id: string
+  service: ParticipantService
+  authNumber: string
+  authStart: string
+  authEnd: string
+  workingHours: number
+  coachingHours: number
+  status: AuthorizationStatus
+  closedReason?: string
+  closedAt?: string
+}
+
 export interface Participant {
   id: string
   regionId: string
   name: string
   site: string
   siteContact: string
-  service: ParticipantService
-  workingHoursPerWeek: number
-  coachingHoursPerWeek: number
-  authStart: string
-  authEnd: string
-  authNumber: string
+  authorizations: Authorization[]
   bestAddressForChecks: string
   notes: string
 }
@@ -64,9 +74,11 @@ export type ParticipantService =
   | 'TWE'
   | 'JC'
   | 'LVL UP'
-  | 'Module'
+  | 'Interview Prep'
+  | 'Job Exploration'
   | 'Orientation'
-  | 'Other'
+  | 'Other Module'
+  | 'Other Service'
 
 export const PARTICIPANT_SERVICES: ParticipantService[] = [
   'WA',
@@ -74,9 +86,11 @@ export const PARTICIPANT_SERVICES: ParticipantService[] = [
   'TWE',
   'JC',
   'LVL UP',
-  'Module',
+  'Interview Prep',
+  'Job Exploration',
   'Orientation',
-  'Other',
+  'Other Module',
+  'Other Service',
 ]
 
 export const PARTICIPANT_NOTES_MAX = 30
@@ -151,6 +165,7 @@ export type ShiftType = 'solo' | 'coached' | 'other-coaching'
 export interface Shift {
   id: string
   participantId?: string
+  authorizationId?: string
   otherCoachingActivityId?: string
   date: string
   startMinutes: number

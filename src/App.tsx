@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore'
 import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView } from './lib/regions'
-import { isParticipantFullyScheduled } from './lib/scheduling'
+import { resolveSelectedAuthorization } from './lib/authorizations'
+import { isAuthorizationFullyScheduled } from './lib/scheduling'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
 import { ConfettiCelebration } from './components/ConfettiCelebration'
@@ -18,6 +19,10 @@ export default function App() {
   const scheduleStatusRef = useRef<Map<string, boolean>>(new Map())
   const scheduleTrackingReadyRef = useRef(false)
 
+  const [selectedAuthorizationByParticipant, setSelectedAuthorizationByParticipant] = useState<
+    Record<string, string>
+  >({})
+
   useEffect(() => {
     scheduleTrackingReadyRef.current = false
     scheduleStatusRef.current.clear()
@@ -26,22 +31,30 @@ export default function App() {
   useEffect(() => {
     if (!scheduleTrackingReadyRef.current) {
       for (const p of regionAllParticipants) {
-        scheduleStatusRef.current.set(
-          p.id,
-          isParticipantFullyScheduled(p, state.shifts),
-        )
+        for (const auth of p.authorizations) {
+          scheduleStatusRef.current.set(
+            `${p.id}:${auth.id}`,
+            isAuthorizationFullyScheduled(auth, p.id, state.shifts),
+          )
+        }
       }
       scheduleTrackingReadyRef.current = true
       return
     }
 
     for (const p of regionAllParticipants) {
-      const nowFullyScheduled = isParticipantFullyScheduled(p, state.shifts)
-      const wasFullyScheduled = scheduleStatusRef.current.get(p.id) ?? false
-      if (nowFullyScheduled && !wasFullyScheduled) {
-        setCelebration({ key: Date.now(), name: p.name || 'Participant' })
+      for (const auth of p.authorizations) {
+        const key = `${p.id}:${auth.id}`
+        const nowFullyScheduled = isAuthorizationFullyScheduled(auth, p.id, state.shifts)
+        const wasFullyScheduled = scheduleStatusRef.current.get(key) ?? false
+        if (nowFullyScheduled && !wasFullyScheduled) {
+          setCelebration({
+            key: Date.now(),
+            name: `${p.name || 'Participant'} (${auth.service})`,
+          })
+        }
+        scheduleStatusRef.current.set(key, nowFullyScheduled)
       }
-      scheduleStatusRef.current.set(p.id, nowFullyScheduled)
     }
   }, [regionAllParticipants, state.shifts])
 
@@ -152,6 +165,21 @@ export default function App() {
     if (id) setSelectedOtherCoachingId('')
   }
 
+  const selectAuthorization = (participantId: string, authorizationId: string) => {
+    setSelectedAuthorizationByParticipant((prev) => ({
+      ...prev,
+      [participantId]: authorizationId,
+    }))
+  }
+
+  const selectedParticipant = regionParticipants.find((p) => p.id === validSelection)
+  const selectedAuthorization = selectedParticipant
+    ? resolveSelectedAuthorization(
+        selectedParticipant,
+        selectedAuthorizationByParticipant[selectedParticipant.id],
+      )
+    : undefined
+
   const selectOtherCoaching = (id: string) => {
     setSelectedOtherCoachingId(id)
     if (id) setSelectedParticipantId('')
@@ -225,10 +253,13 @@ export default function App() {
           onToggleOtherCoachingVisibility={toggleOtherCoachingVisibility}
           visibleParticipantIds={visibleParticipantIds}
           onToggleParticipantVisibility={toggleParticipantVisibility}
+          selectedAuthorizationByParticipant={selectedAuthorizationByParticipant}
+          onSelectAuthorization={selectAuthorization}
         />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-950 p-4">
           <WeekScheduler
             selectedParticipantId={validSelection}
+            selectedAuthorizationId={selectedAuthorization?.id ?? ''}
             selectedOtherCoachingId={validOtherCoachingSelection}
             visibleCoachIds={visibleCoachIds}
             visibleCoachShiftIds={visibleCoachShiftIds}

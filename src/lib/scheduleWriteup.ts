@@ -1,9 +1,8 @@
 import type { Coach, OtherCoachingActivity, Participant, Shift } from '../types'
+import { getAuthorizationById, isCoachingOnlyAuthorization } from './authorizations'
 import {
   formatHoursValue,
-  getParticipantHoursForWeek,
   getShiftMilestoneLabels,
-  isCoachingOnlyParticipant,
   shiftUsesCoach,
 } from './scheduling'
 import {
@@ -14,6 +13,16 @@ import {
 } from './time'
 
 const DIVIDER = '----------------------------------------'
+
+export const SCHEDULE_GENERAL_ADVICE =
+  'Participants and coaches: Please meet each other at the front of the site before proceeding into your shift. If the site contact is not indicated or present, inform site staff at the location that you are there working on an approved Goodwill trial or working interview. Do not begin working earlier than your schedule times or stay later. Always notify your employment specialist if your arrival or departure from your shift is different than scheduled. For any questions - contact your employment specialist.'
+
+function appendScheduleGeneralAdvice(lines: string[]): void {
+  lines.push('')
+  lines.push(DIVIDER)
+  lines.push('GENERAL ADVICE')
+  lines.push(SCHEDULE_GENERAL_ADVICE)
+}
 
 function formatWeekHeading(weekStart: string): string {
   const start = parseDateInput(weekStart)
@@ -130,12 +139,21 @@ export function buildParticipantWeekScheduleWriteup(
   if (participant.siteContact?.trim()) {
     lines.push(`Site contact: ${participant.siteContact.trim()}`)
   }
-  lines.push(`Service: ${participant.service}`)
+  const activeAuths = participant.authorizations.filter((a) => a.status === 'active')
+  if (activeAuths.length === 1) {
+    lines.push(`Service: ${activeAuths[0].service}`)
+    lines.push(`Authorization: ${activeAuths[0].authNumber}`)
+  } else if (participant.authorizations.length > 0) {
+    lines.push(
+      `Authorizations: ${participant.authorizations.map((a) => `${a.service} (${a.authNumber})`).join(', ')}`,
+    )
+  }
   lines.push(`Week: ${formatWeekHeading(weekStart)}`)
   lines.push('')
 
   if (weekShifts.length === 0) {
     lines.push('No shifts are scheduled for you this week.')
+    appendScheduleGeneralAdvice(lines)
     return lines.join('\n')
   }
 
@@ -151,10 +169,18 @@ export function buildParticipantWeekScheduleWriteup(
         ? coachMap.get(shift.coachId)
         : undefined
 
+    const shiftAuth = shift.authorizationId
+      ? getAuthorizationById(participant, shift.authorizationId)
+      : undefined
+
     if (index > 0) lines.push('')
     lines.push(DIVIDER)
     lines.push(`SHIFT ${index + 1} — ${day}`)
     lines.push(`When: ${time} (${hours} hour${hours === '1' ? '' : 's'})`)
+    if (shiftAuth) {
+      lines.push(`Service: ${shiftAuth.service}`)
+      lines.push(`Authorization #: ${shiftAuth.authNumber}`)
+    }
 
     if (shift.type === 'coached') {
       lines.push('Type: Coached session')
@@ -178,9 +204,9 @@ export function buildParticipantWeekScheduleWriteup(
       }
     }
 
-    const milestones = milestoneInstructions(
-      getShiftMilestoneLabels(participant, shift.id, shifts),
-    )
+    const milestones = shiftAuth
+      ? milestoneInstructions(getShiftMilestoneLabels(shiftAuth, shift.id, shifts))
+      : ['This shift is not linked to an authorization.']
     for (const note of milestones) {
       lines.push(`Important: ${note}`)
     }
@@ -193,16 +219,23 @@ export function buildParticipantWeekScheduleWriteup(
   lines.push('')
   lines.push(DIVIDER)
   lines.push('WEEKLY TOTALS')
-  const weekHours = getParticipantHoursForWeek(participant, weekDates, shifts)
-  if (isCoachingOnlyParticipant(participant)) {
-    lines.push(`Coached hours this week: ${formatHoursValue(weekHours.coachedScheduled)}`)
-  } else {
-    lines.push(`Total work hours this week: ${formatHoursValue(weekHours.totalWorkScheduled)}`)
-    lines.push(`Coached hours this week: ${formatHoursValue(weekHours.coachedScheduled)}`)
+  let totalWork = 0
+  let totalCoached = 0
+  for (const shift of weekShifts) {
+    const h = durationHours(shift.startMinutes, shift.endMinutes)
+    totalWork += h
+    if (shift.type === 'coached') totalCoached += h
   }
+  const hasNonCoachingOnly = weekShifts.some((s) => {
+    const auth = s.authorizationId ? getAuthorizationById(participant, s.authorizationId) : undefined
+    return auth && !isCoachingOnlyAuthorization(auth)
+  })
+  if (hasNonCoachingOnly) {
+    lines.push(`Total work hours this week: ${formatHoursValue(totalWork)}`)
+  }
+  lines.push(`Coached hours this week: ${formatHoursValue(totalCoached)}`)
 
-  lines.push('')
-  lines.push('Please arrive on time for each shift. Contact your coordinator if you need to make changes.')
+  appendScheduleGeneralAdvice(lines)
 
   return lines.join('\n')
 }
@@ -239,6 +272,7 @@ export function buildCoachWeekScheduleWriteup(
 
   if (weekShifts.length === 0) {
     lines.push('No coached sessions or other coaching assignments are scheduled this week.')
+    appendScheduleGeneralAdvice(lines)
     return lines.join('\n')
   }
 
@@ -291,15 +325,23 @@ export function buildCoachWeekScheduleWriteup(
       lines.push(`Participant: ${p?.name || 'Unnamed'}`)
       if (p?.site) lines.push(`Site: ${p.site}`)
       if (p?.siteContact?.trim()) lines.push(`Site contact: ${p.siteContact.trim()}`)
-      if (p?.service) lines.push(`Service: ${p.service}`)
-      if (p) {
+      const shiftAuth = shift.authorizationId
+        ? p?.authorizations.find((a) => a.id === shift.authorizationId)
+        : undefined
+      if (shiftAuth) {
+        lines.push(`Service: ${shiftAuth.service}`)
+        lines.push(`Authorization #: ${shiftAuth.authNumber}`)
+      }
+      if (p && shiftAuth) {
         const milestones = milestoneInstructions(
-          getShiftMilestoneLabels(p, shift.id, shifts),
+          getShiftMilestoneLabels(shiftAuth, shift.id, shifts),
           'coach',
         )
         for (const note of milestones) {
           lines.push(`Important: ${note}`)
         }
+      } else if (p) {
+        lines.push('Important: Shift is not linked to an authorization.')
       }
       if (shift.notes?.trim()) lines.push(`Notes: ${shift.notes.trim()}`)
     }
@@ -317,6 +359,8 @@ export function buildCoachWeekScheduleWriteup(
   lines.push(
     `Total hours this week: ${formatHoursValue(coachedHours + otherCoachingHours)}`,
   )
+
+  appendScheduleGeneralAdvice(lines)
 
   return lines.join('\n')
 }
