@@ -697,6 +697,7 @@ export function WeekScheduler({
                         participantName={
                           isOtherCoaching ? activity?.name || 'Other coaching' : p?.name || 'Participant'
                         }
+                        participantPhone={!isOtherCoaching ? p?.phone : undefined}
                         site={isOtherCoaching ? activity?.notes : p?.site}
                         accentColor={
                           coach?.color ?? (isCoached || isOtherCoaching ? '#64748b' : '#64748b')

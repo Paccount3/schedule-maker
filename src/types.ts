@@ -61,6 +61,7 @@ export interface Participant {
   id: string
   regionId: string
   name: string
+  phone: string
   site: string
   siteContact: string
   authorizations: Authorization[]

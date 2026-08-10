@@ -29,6 +29,7 @@ interface ShiftBlockProps {
   top: number
   height: number
   participantName: string
+  participantPhone?: string
   site?: string
   accentColor: string
   coachName?: string
@@ -59,6 +60,7 @@ export function ShiftBlock({
   top,
   height,
   participantName,
+  participantPhone,
   site,
   accentColor,
   coachName,
@@ -259,6 +261,14 @@ export function ShiftBlock({
             style={{ fontSize: `${siteFontSize}px` }}
           >
             {site}
+          </div>
+        )}
+        {participantPhone && !isOtherCoaching && (
+          <div
+            className="truncate opacity-70"
+            style={{ fontSize: `${siteFontSize}px` }}
+          >
+            {participantPhone}
           </div>
         )}
         {authorizationHoursLines.map((line) => (

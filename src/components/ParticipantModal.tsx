@@ -305,6 +305,16 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
             </select>
           </label>
           <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-400">Phone</span>
+            <input
+              className={`${inputClass} mt-1`}
+              placeholder="Phone number"
+              type="tel"
+              value={participant.phone}
+              onChange={(e) => setParticipant({ ...participant, phone: e.target.value })}
+            />
+          </label>
+          <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-slate-400">
               Site <span className="text-red-400">*</span>
             </span>

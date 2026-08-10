@@ -93,6 +93,7 @@ export function migrateParticipantRecord(
       id: raw.id,
       regionId: raw.regionId,
       name: raw.name,
+      phone: raw.phone ?? '',
       site: raw.site,
       siteContact: raw.siteContact ?? '',
       authorizations: raw.authorizations.map(normalizeAuthorization),
@@ -106,6 +107,7 @@ export function migrateParticipantRecord(
     id: raw.id,
     regionId: raw.regionId,
     name: raw.name,
+    phone: raw.phone ?? '',
     site: raw.site,
     siteContact: raw.siteContact ?? '',
     authorizations: [
