@@ -6,6 +6,8 @@ import {
   defaultStartingHoursForCategory,
 } from '../types'
 import { useStore } from '../store/useStore'
+import { useConfirm } from '../store/useConfirm'
+import { otherCoachingDeleteConfirm } from '../lib/confirmMessages'
 import { filterCoachesByRegion } from '../lib/regions'
 import { Modal } from './Modal'
 import { CalendarScheduleHint } from './CalendarScheduleHint'
@@ -21,6 +23,7 @@ interface OtherCoachingModalProps {
 
 export function OtherCoachingModal({ activity: initial, isNew, onClose }: OtherCoachingModalProps) {
   const { state, updateOtherCoachingActivity, removeOtherCoachingActivity } = useStore()
+  const { confirm } = useConfirm()
   const [activity, setActivity] = useState(initial)
   const [coachError, setCoachError] = useState<string | undefined>()
 
@@ -40,11 +43,11 @@ export function OtherCoachingModal({ activity: initial, isNew, onClose }: OtherC
     onClose()
   }
 
-  const handleDelete = () => {
-    if (confirm(`Remove ${activity.name}? All calendar shifts for this assignment will be deleted.`)) {
-      removeOtherCoachingActivity(activity.id)
-      onClose()
-    }
+  const handleDelete = async () => {
+    const ok = await confirm(otherCoachingDeleteConfirm(activity.name))
+    if (!ok) return
+    removeOtherCoachingActivity(activity.id)
+    onClose()
   }
 
   return (

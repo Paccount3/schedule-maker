@@ -6,6 +6,8 @@ import {
   isCoachingOnlyAuthorization,
 } from '../lib/authorizations'
 import { DEFAULT_PARTICIPANT_AUTH_NUMBER, PARTICIPANT_AUTH_NUMBER_LENGTH, PARTICIPANT_SERVICES } from '../types'
+import { useConfirm } from '../store/useConfirm'
+import { authorizationDeleteConfirm } from '../lib/confirmMessages'
 import { DateSelect } from './DateSelect'
 
 const inputClass =
@@ -28,6 +30,7 @@ export function AuthorizationsEditor({
   fieldErrors,
   onClearFieldError,
 }: AuthorizationsEditorProps) {
+  const { confirm } = useConfirm()
   const [closingAuthId, setClosingAuthId] = useState<string | null>(null)
   const [closeReason, setCloseReason] = useState('')
 
@@ -47,8 +50,15 @@ export function AuthorizationsEditor({
     })
   }
 
-  const removeAuthorization = (authId: string) => {
+  const removeAuthorization = async (authId: string) => {
     if (participant.authorizations.length <= 1) return
+
+    const auth = participant.authorizations.find((a) => a.id === authId)
+    if (!auth) return
+
+    const ok = await confirm(authorizationDeleteConfirm(auth.service))
+    if (!ok) return
+
     onChange({
       ...participant,
       authorizations: participant.authorizations.filter((a) => a.id !== authId),

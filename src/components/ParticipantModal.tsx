@@ -5,6 +5,8 @@ import {
   PARTICIPANT_NOTES_MAX,
 } from '../types'
 import { useStore } from '../store/useStore'
+import { useConfirm } from '../store/useConfirm'
+import { participantDeleteConfirm } from '../lib/confirmMessages'
 import { resolveSelectedAuthorization } from '../lib/authorizations'
 import { hexToRgba } from '../lib/colors'
 import { filterCoachesByRegion } from '../lib/regions'
@@ -41,6 +43,7 @@ interface ParticipantModalProps {
 
 export function ParticipantModal({ participant: initial, isNew, onClose }: ParticipantModalProps) {
   const { state, updateParticipant, removeParticipant, addShifts } = useStore()
+  const { confirm } = useConfirm()
   const [participant, setParticipant] = useState(initial)
 
   const [shiftDurationHours, setShiftDurationHours] = useState(isNew ? 4 : 3)
@@ -178,11 +181,11 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     onClose()
   }
 
-  const handleDelete = () => {
-    if (confirm(`Remove ${participant.name || 'this participant'}? All their shifts will be deleted.`)) {
-      removeParticipant(participant.id)
-      onClose()
-    }
+  const handleDelete = async () => {
+    const ok = await confirm(participantDeleteConfirm(participant.name))
+    if (!ok) return
+    removeParticipant(participant.id)
+    onClose()
   }
 
   const toggleSlot = (slot: SuggestedSlot) => {

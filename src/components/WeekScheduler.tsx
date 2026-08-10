@@ -1,6 +1,8 @@
 import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { Coach, Shift } from '../types'
 import { useStore } from '../store/useStore'
+import { useConfirm } from '../store/useConfirm'
+import { shiftDeleteConfirm } from '../lib/confirmMessages'
 import { hexToRgba } from '../lib/colors'
 import { resolveSelectedAuthorization, isAuthorizationSchedulable, isCoachingOnlyAuthorization } from '../lib/authorizations'
 import {
@@ -130,6 +132,7 @@ export function WeekScheduler({
     removeShift,
     copyShiftsFromPreviousWeek,
   } = useStore()
+  const { confirm } = useConfirm()
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
   const [isNewShift, setIsNewShift] = useState(false)
   const [dragPreview, setDragPreview] = useState<ShiftDragPreview | null>(null)
@@ -270,6 +273,15 @@ export function WeekScheduler({
       setContextMenu({ x: e.clientX, y: e.clientY, items })
     },
     [],
+  )
+
+  const confirmDeleteShift = useCallback(
+    async (shiftId: string) => {
+      const ok = await confirm(shiftDeleteConfirm())
+      if (!ok) return
+      removeShift(shiftId)
+    },
+    [confirm, removeShift],
   )
 
   const handleDayColumnContextMenu = useCallback(
@@ -734,7 +746,7 @@ export function WeekScheduler({
                               {
                                 label: 'Delete Shift',
                                 onClick: () => {
-                                  removeShift(original.id)
+                                  void confirmDeleteShift(original.id)
                                 },
                               },
                             ])
@@ -779,7 +791,7 @@ export function WeekScheduler({
                             {
                               label: 'Delete Shift',
                               onClick: () => {
-                                removeShift(original.id)
+                                void confirmDeleteShift(original.id)
                               },
                             },
                           ])

@@ -17,6 +17,15 @@ export type SoundOption = SoundId | false
 
 let audioContext: AudioContext | null = null
 let unlockListenerAttached = false
+let soundsFxEnabled = true
+
+export function setSoundsFxEnabled(enabled: boolean): void {
+  soundsFxEnabled = enabled
+}
+
+export function areSoundsFxEnabled(): boolean {
+  return soundsFxEnabled
+}
 
 function getContext(): AudioContext {
   if (!audioContext) {
@@ -205,6 +214,7 @@ let lastWarningPlayedAt = 0
 const WARNING_SOUND_COOLDOWN_MS = 900
 
 export function playConfettiPopSound(): void {
+  if (!soundsFxEnabled) return
   try {
     unlockAudio()
     const ctx = getContext()
@@ -215,6 +225,7 @@ export function playConfettiPopSound(): void {
 }
 
 export function playWarningSound(): void {
+  if (!soundsFxEnabled) return
   const now = Date.now()
   if (now - lastWarningPlayedAt < WARNING_SOUND_COOLDOWN_MS) return
   lastWarningPlayedAt = now
@@ -222,6 +233,7 @@ export function playWarningSound(): void {
 }
 
 export function playSound(id: SoundId): void {
+  if (!soundsFxEnabled) return
   try {
     unlockAudio()
     const ctx = getContext()

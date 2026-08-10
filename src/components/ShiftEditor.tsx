@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { OtherCoachingActivity, Shift, ShiftType } from '../types'
 import { useStore } from '../store/useStore'
+import { useConfirm } from '../store/useConfirm'
+import { shiftDeleteConfirm } from '../lib/confirmMessages'
 import { hexToRgba } from '../lib/colors'
 import {
   getAvailableCoaches,
@@ -44,6 +46,7 @@ function otherCoachingShiftWithActivityCoach(
 
 export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, onDelete }: ShiftEditorProps) {
   const { state, updateShift, removeShift } = useStore()
+  const { confirm } = useConfirm()
   const [shift, setShift] = useState(() =>
     otherCoachingShiftWithActivityCoach(initialShift, state.otherCoachingActivities),
   )
@@ -114,7 +117,9 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
     onClose()
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    const ok = await confirm(shiftDeleteConfirm())
+    if (!ok) return
     removeShift(shift.id)
     onDelete?.()
     onClose()

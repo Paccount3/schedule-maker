@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { Coach, DayOfWeek, TimeRange } from '../types'
 import { COACH_NOTES_MAX, DAYS, DAY_LABELS } from '../types'
 import { useStore } from '../store/useStore'
+import { useConfirm } from '../store/useConfirm'
+import { coachDeleteConfirm } from '../lib/confirmMessages'
 import { COACH_COLOR_PALETTE } from '../lib/colors'
 import { CALENDAR_VIEW_END, CALENDAR_VIEW_START, SLOT_MINUTES } from '../lib/time'
 import { TimeSelect } from './TimeSelect'
@@ -96,6 +98,7 @@ interface CoachModalProps {
 
 export function CoachModal({ coach: initialCoach, onClose }: CoachModalProps) {
   const { state, updateCoach, removeCoach } = useStore()
+  const { confirm } = useConfirm()
   const [coach, setCoach] = useState(initialCoach)
 
   const save = () => {
@@ -103,11 +106,11 @@ export function CoachModal({ coach: initialCoach, onClose }: CoachModalProps) {
     onClose()
   }
 
-  const handleDelete = () => {
-    if (confirm(`Remove ${coach.name || 'this coach'}? Assigned shifts will become solo.`)) {
-      removeCoach(coach.id)
-      onClose()
-    }
+  const handleDelete = async () => {
+    const ok = await confirm(coachDeleteConfirm(coach.name))
+    if (!ok) return
+    removeCoach(coach.id)
+    onClose()
   }
 
   return (
