@@ -45,6 +45,9 @@ export function SettingsMenu() {
             />
             Sounds/FX
           </label>
+          <div className="mt-1 border-t border-slate-800 px-3 pt-2">
+            <p className="text-xs text-slate-500">Created by Shawn Hillmann</p>
+          </div>
         </div>
       )}
     </div>

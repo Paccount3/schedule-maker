@@ -330,7 +330,7 @@ export default function App() {
       )}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 bg-slate-900 px-5 py-3">
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Goodwill Coach Schedule Maker</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Schedule Maker Pro</h1>
           <p className="text-xs text-slate-400">Plan shifts and match coach availability</p>
         </div>
         <SettingsMenu />

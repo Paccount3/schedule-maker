@@ -188,10 +188,39 @@ function playWeekNav(now: number): void {
   tone(520, now + 0.04, 0.05, { volume: 0.035, type: 'sine' })
 }
 
+function buzz(
+  startTime: number,
+  duration: number,
+  frequency: number,
+  volume = 0.065,
+): void {
+  const ctx = getContext()
+  const oscillator = ctx.createOscillator()
+  const filter = ctx.createBiquadFilter()
+  const gain = ctx.createGain()
+
+  oscillator.type = 'square'
+  oscillator.frequency.setValueAtTime(frequency, startTime)
+
+  filter.type = 'lowpass'
+  filter.frequency.setValueAtTime(720, startTime)
+  filter.Q.setValueAtTime(0.8, startTime)
+
+  gain.gain.setValueAtTime(0.0001, startTime)
+  gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.006)
+  gain.gain.setValueAtTime(volume * 0.92, startTime + duration * 0.55)
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration)
+
+  oscillator.connect(filter)
+  filter.connect(gain)
+  gain.connect(ctx.destination)
+  oscillator.start(startTime)
+  oscillator.stop(startTime + duration + 0.02)
+}
+
 function playWarning(now: number): void {
-  tone(740, now, 0.08, { volume: 0.055, type: 'triangle' })
-  tone(554, now + 0.1, 0.1, { volume: 0.05, type: 'triangle' })
-  tone(440, now + 0.2, 0.12, { volume: 0.045, type: 'sine' })
+  buzz(now, 0.09, 155)
+  buzz(now + 0.11, 0.09, 155)
 }
 
 const PLAYERS: Record<SoundId, (now: number) => void> = {
