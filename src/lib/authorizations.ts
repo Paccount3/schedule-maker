@@ -6,13 +6,47 @@ import type {
   Shift,
 } from '../types'
 import { DEFAULT_PARTICIPANT_AUTH_NUMBER } from '../types'
-import { defaultParticipantAuthRange, generateId } from './time'
+import { defaultParticipantAuthRange, generateId, parseDateInput } from './time'
 
 export const AUTHORIZATION_STATUS_LABELS: Record<AuthorizationStatus, string> = {
   active: 'Active',
-  completed: 'Completed',
   closed_early: 'Closed early',
-  cancelled: 'Cancelled',
+}
+
+export function normalizeAuthorizationStatus(status: string | undefined): AuthorizationStatus {
+  if (status === 'closed_early' || status === 'completed' || status === 'cancelled') {
+    return 'closed_early'
+  }
+  return 'active'
+}
+
+export function getAuthorizationEffectiveEnd(auth: Authorization): string {
+  if (auth.status === 'closed_early' && auth.closedAt?.trim()) {
+    return auth.closedAt
+  }
+  return auth.authEnd
+}
+
+export function formatAuthorizationStatusLabel(auth: Authorization): string {
+  if (auth.status === 'closed_early') {
+    if (auth.closedAt?.trim()) {
+      const closed = parseDateInput(auth.closedAt).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+      return `Closed early · ${closed}`
+    }
+    return AUTHORIZATION_STATUS_LABELS.closed_early
+  }
+  return AUTHORIZATION_STATUS_LABELS.active
+}
+
+export function authorizationStatusBadgeClass(auth: Authorization): string {
+  if (auth.status === 'closed_early') {
+    return 'bg-red-950/80 text-red-300 ring-1 ring-red-500/30'
+  }
+  return 'bg-emerald-950/80 text-emerald-300 ring-1 ring-emerald-500/30'
 }
 
 export function createEmptyAuthorization(
@@ -45,7 +79,8 @@ export function authorizationOverlapsRange(
   rangeStart: string,
   rangeEnd: string,
 ): boolean {
-  return auth.authStart <= rangeEnd && auth.authEnd >= rangeStart
+  const effectiveEnd = getAuthorizationEffectiveEnd(auth)
+  return auth.authStart <= rangeEnd && effectiveEnd >= rangeStart
 }
 
 export function getAuthorizationById(
@@ -147,13 +182,19 @@ function normalizeService(service: string | undefined): ParticipantService {
 }
 
 function normalizeAuthorization(auth: Authorization): Authorization {
+  const status = normalizeAuthorizationStatus(auth.status)
   return {
     ...auth,
     service: normalizeService(auth.service),
     authNumber: auth.authNumber?.trim() || DEFAULT_PARTICIPANT_AUTH_NUMBER,
     workingHours: auth.workingHours ?? 0,
     coachingHours: auth.coachingHours ?? 0,
-    status: auth.status ?? 'active',
+    status,
+    closedAt:
+      status === 'closed_early'
+        ? auth.closedAt?.trim() || auth.authEnd
+        : undefined,
+    closedReason: status === 'closed_early' ? auth.closedReason : undefined,
   }
 }
 
@@ -172,5 +213,5 @@ export function assignShiftsToDefaultAuthorizations(
 }
 
 export function authorizationLabel(auth: Authorization): string {
-  return `${auth.service} · ${AUTHORIZATION_STATUS_LABELS[auth.status]}`
+  return `${auth.service} · ${formatAuthorizationStatusLabel(auth)}`
 }

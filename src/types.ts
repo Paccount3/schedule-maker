@@ -42,7 +42,7 @@ export const DEFAULT_REGIONS: Region[] = [
   { id: 'west-region', name: 'West Region' },
 ]
 
-export type AuthorizationStatus = 'active' | 'completed' | 'closed_early' | 'cancelled'
+export type AuthorizationStatus = 'active' | 'closed_early'
 
 export interface Authorization {
   id: string

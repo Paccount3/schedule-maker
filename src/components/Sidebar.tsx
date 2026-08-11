@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
 import {
-  AUTHORIZATION_STATUS_LABELS,
   isCoachingOnlyAuthorization,
   resolveSelectedAuthorization,
 } from '../lib/authorizations'
@@ -27,6 +26,7 @@ import { ChevronIcon } from './ChevronIcon'
 import { EyeIcon } from './EyeIcon'
 import { OtherCoachingModal } from './OtherCoachingModal'
 import { ParticipantModal } from './ParticipantModal'
+import { AuthorizationStatusBadge } from './AuthorizationStatusBadge'
 import { ShiftIcon } from './ShiftIcon'
 
 interface SidebarProps {
@@ -289,7 +289,7 @@ function ParticipantRow({
 
         {expanded && (
           <div className="mt-2 space-y-2">
-            {selected && participant.authorizations.length > 0 && (
+            {selected && participant.authorizations.length > 1 && (
               <label className="block" onClick={(e) => e.stopPropagation()}>
                 <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
                   Scheduling authorization
@@ -301,11 +301,17 @@ function ParticipantRow({
                 >
                   {participant.authorizations.map((auth) => (
                     <option key={auth.id} value={auth.id}>
-                      {auth.service} · {AUTHORIZATION_STATUS_LABELS[auth.status]}
+                      {auth.service}
                     </option>
                   ))}
                 </select>
               </label>
+            )}
+
+            {authorization && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <AuthorizationStatusBadge authorization={authorization} />
+              </div>
             )}
 
             {authorization && weekHours && (
@@ -331,11 +337,6 @@ function ParticipantRow({
                   <span className={hasAuthIssue ? 'font-medium text-red-300' : 'text-slate-300'}>
                     {formatAuthRange(authorization.authStart, authorization.authEnd)}
                   </span>
-                  {authorization.status !== 'active' && (
-                    <span className="mt-0.5 block text-[10px] text-slate-500">
-                      Status: {AUTHORIZATION_STATUS_LABELS[authorization.status]}
-                    </span>
-                  )}
                   {hasAuthIssue && (
                     <span className="mt-0.5 block text-[10px] text-red-400/90">
                       Shifts missing authorization or outside date range

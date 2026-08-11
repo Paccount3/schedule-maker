@@ -2,6 +2,7 @@ import type { Authorization, Coach, OtherCoachingActivity, Participant, Shift, T
 import type { DayOfWeek } from '../types'
 import {
   authorizationOverlapsRange,
+  getAuthorizationEffectiveEnd,
   isAuthorizationSchedulable,
   isCoachingOnlyAuthorization,
 } from './authorizations'
@@ -135,7 +136,10 @@ export function getShiftConflicts(
         type: 'missing_authorization',
         message: 'Linked authorization was not found',
       })
-    } else if (shift.date < authorization.authStart || shift.date > authorization.authEnd) {
+    } else if (
+      shift.date < authorization.authStart ||
+      shift.date > getAuthorizationEffectiveEnd(authorization)
+    ) {
       conflicts.push({
         type: 'outside_auth',
         message: 'Shift is outside authorization date range',
@@ -434,7 +438,8 @@ export function authorizationHasAuthIssue(
     (s) =>
       s.participantId === participantId &&
       s.authorizationId === authorization.id &&
-      (s.date < authorization.authStart || s.date > authorization.authEnd),
+      (s.date < authorization.authStart ||
+        s.date > getAuthorizationEffectiveEnd(authorization)),
   )
 }
 
@@ -532,7 +537,9 @@ export function participantHasAuthIssue(participant: Participant, shifts: Shift[
     if (!s.authorizationId) return true
     const auth = participant.authorizations.find((a) => a.id === s.authorizationId)
     if (!auth) return true
-    return s.date < auth.authStart || s.date > auth.authEnd
+    return (
+      s.date < auth.authStart || s.date > getAuthorizationEffectiveEnd(auth)
+    )
   })
 }
 

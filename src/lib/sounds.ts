@@ -18,9 +18,22 @@ export type SoundOption = SoundId | false
 let audioContext: AudioContext | null = null
 let unlockListenerAttached = false
 let soundsFxEnabled = true
+let soundVolume = 1
 
 export function setSoundsFxEnabled(enabled: boolean): void {
   soundsFxEnabled = enabled
+}
+
+export function setSoundVolume(volume: number): void {
+  soundVolume = Math.min(1, Math.max(0, volume))
+}
+
+export function getSoundVolume(): number {
+  return soundVolume
+}
+
+function scaleVolume(volume: number): number {
+  return volume * soundVolume
 }
 
 export function areSoundsFxEnabled(): boolean {
@@ -84,7 +97,7 @@ function tone(
   oscillator.detune.setValueAtTime(detune, startTime)
 
   gain.gain.setValueAtTime(0.0001, startTime)
-  gain.gain.exponentialRampToValueAtTime(volume, startTime + attack)
+  gain.gain.exponentialRampToValueAtTime(scaleVolume(volume), startTime + attack)
   gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + release)
 
   oscillator.connect(gain)
@@ -113,7 +126,7 @@ function noiseBurst(startTime: number, duration: number, volume = 0.035): void {
   filter.frequency.setValueAtTime(900, startTime)
   filter.Q.setValueAtTime(0.7, startTime)
 
-  gain.gain.setValueAtTime(volume, startTime)
+  gain.gain.setValueAtTime(scaleVolume(volume), startTime)
   gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration)
 
   source.connect(filter)
@@ -207,8 +220,8 @@ function buzz(
   filter.Q.setValueAtTime(0.8, startTime)
 
   gain.gain.setValueAtTime(0.0001, startTime)
-  gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.006)
-  gain.gain.setValueAtTime(volume * 0.92, startTime + duration * 0.55)
+  gain.gain.exponentialRampToValueAtTime(scaleVolume(volume), startTime + 0.006)
+  gain.gain.setValueAtTime(scaleVolume(volume) * 0.92, startTime + duration * 0.55)
   gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration)
 
   oscillator.connect(filter)

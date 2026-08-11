@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import type { Authorization, AuthorizationStatus, Participant, ParticipantService } from '../types'
+import type { Authorization, Participant, ParticipantService } from '../types'
 import {
-  AUTHORIZATION_STATUS_LABELS,
   createEmptyAuthorization,
   isCoachingOnlyAuthorization,
 } from '../lib/authorizations'
 import { DEFAULT_PARTICIPANT_AUTH_NUMBER, PARTICIPANT_AUTH_NUMBER_LENGTH, PARTICIPANT_SERVICES } from '../types'
+import { todayDateInput } from '../lib/time'
 import { useConfirm } from '../store/useConfirm'
 import { authorizationDeleteConfirm } from '../lib/confirmMessages'
+import { AuthorizationStatusBadge } from './AuthorizationStatusBadge'
 import { DateSelect } from './DateSelect'
 
 const inputClass =
@@ -32,7 +33,8 @@ export function AuthorizationsEditor({
 }: AuthorizationsEditorProps) {
   const { confirm } = useConfirm()
   const [closingAuthId, setClosingAuthId] = useState<string | null>(null)
-  const [closeReason, setCloseReason] = useState('')
+  const [closeDate, setCloseDate] = useState('')
+  const [closeDateError, setCloseDateError] = useState('')
 
   const updateAuth = (authId: string, patch: Partial<Authorization>) => {
     onChange({
@@ -65,19 +67,42 @@ export function AuthorizationsEditor({
     })
   }
 
-  const setAuthStatus = (authId: string, status: AuthorizationStatus, reason?: string) => {
+  const reopenAuthorization = (authId: string) => {
     updateAuth(authId, {
-      status,
-      closedReason: reason,
-      closedAt: status === 'active' ? undefined : new Date().toISOString().slice(0, 10),
+      status: 'active',
+      closedAt: undefined,
+      closedReason: undefined,
     })
   }
 
-  const confirmCloseEarly = (authId: string) => {
-    const reason = closeReason.trim() || 'Closed before all authorized hours were used.'
-    setAuthStatus(authId, 'closed_early', reason)
+  const startCloseEarly = (auth: Authorization) => {
+    setClosingAuthId(auth.id)
+    setCloseDate(todayDateInput())
+    setCloseDateError('')
+  }
+
+  const confirmCloseEarly = (auth: Authorization) => {
+    const trimmed = closeDate.trim()
+    if (!trimmed) {
+      setCloseDateError('Enter the date this authorization closed')
+      return
+    }
+    if (trimmed < auth.authStart) {
+      setCloseDateError('Close date must be on or after the authorization start date')
+      return
+    }
+    if (trimmed > auth.authEnd) {
+      setCloseDateError('Close date must be on or before the authorized end date')
+      return
+    }
+
+    updateAuth(auth.id, {
+      status: 'closed_early',
+      closedAt: trimmed,
+    })
     setClosingAuthId(null)
-    setCloseReason('')
+    setCloseDate('')
+    setCloseDateError('')
   }
 
   return (
@@ -106,17 +131,7 @@ export function AuthorizationsEditor({
               <span className="text-sm font-medium text-slate-200">
                 Authorization {index + 1} · {auth.service}
               </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                  auth.status === 'active'
-                    ? 'bg-emerald-950/80 text-emerald-300 ring-1 ring-emerald-500/30'
-                    : auth.status === 'closed_early'
-                      ? 'bg-amber-950/80 text-amber-300 ring-1 ring-amber-500/30'
-                      : 'bg-slate-800 text-slate-400 ring-1 ring-slate-600/40'
-                }`}
-              >
-                {AUTHORIZATION_STATUS_LABELS[auth.status]}
-              </span>
+              <AuthorizationStatusBadge authorization={auth} />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -211,39 +226,20 @@ export function AuthorizationsEditor({
               </label>
             </div>
 
-            {auth.closedReason && auth.status !== 'active' && (
-              <p className="text-xs text-slate-500">
-                Note: {auth.closedReason}
-                {auth.closedAt ? ` · ${auth.closedAt}` : ''}
-              </p>
-            )}
-
             <div className="flex flex-wrap gap-2 pt-1">
               {auth.status === 'active' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setAuthStatus(auth.id, 'completed')}
-                    className="rounded-md border border-emerald-700/50 px-2.5 py-1 text-xs text-emerald-300 hover:bg-emerald-950/40"
-                  >
-                    Mark completed
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setClosingAuthId(auth.id)
-                      setCloseReason('')
-                    }}
-                    className="rounded-md border border-amber-700/50 px-2.5 py-1 text-xs text-amber-300 hover:bg-amber-950/40"
-                  >
-                    Close early
-                  </button>
-                </>
-              )}
-              {auth.status !== 'active' && (
                 <button
                   type="button"
-                  onClick={() => setAuthStatus(auth.id, 'active')}
+                  onClick={() => startCloseEarly(auth)}
+                  className="rounded-md border border-red-800/50 px-2.5 py-1 text-xs text-red-300 hover:bg-red-950/40"
+                >
+                  Close early
+                </button>
+              )}
+              {auth.status === 'closed_early' && (
+                <button
+                  type="button"
+                  onClick={() => reopenAuthorization(auth.id)}
                   className="rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-300 hover:bg-slate-800"
                 >
                   Reopen
@@ -261,28 +257,40 @@ export function AuthorizationsEditor({
             </div>
 
             {closingAuthId === auth.id && (
-              <div className="rounded-md border border-amber-800/50 bg-amber-950/20 p-3 space-y-2">
-                <p className="text-xs text-amber-200/90">
-                  Remaining authorized hours will be unused and not billed. You can add an optional
-                  reason below.
+              <div className="rounded-md border border-red-800/50 bg-red-950/20 p-3 space-y-2">
+                <p className="text-xs text-red-200/90">
+                  Enter the date this authorization closed. Shifts after that date will no longer
+                  be schedulable, even if the authorized end date is later.
                 </p>
-                <input
-                  className={inputClass}
-                  placeholder="Reason (optional)"
-                  value={closeReason}
-                  onChange={(e) => setCloseReason(e.target.value)}
-                />
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-400">Date closed</span>
+                  <DateSelect
+                    className={`mt-1 ${closeDateError ? '[&>button]:border-red-500' : ''}`}
+                    value={closeDate}
+                    onChange={(value) => {
+                      setCloseDate(value)
+                      setCloseDateError('')
+                    }}
+                  />
+                </label>
+                {closeDateError && (
+                  <span className="block text-xs text-red-400">{closeDateError}</span>
+                )}
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => confirmCloseEarly(auth.id)}
-                    className="rounded-md bg-amber-900/60 px-3 py-1.5 text-xs font-medium text-amber-100 hover:bg-amber-900"
+                    onClick={() => confirmCloseEarly(auth)}
+                    className="rounded-md bg-red-900/70 px-3 py-1.5 text-xs font-medium text-red-50 hover:bg-red-900"
                   >
                     Confirm close early
                   </button>
                   <button
                     type="button"
-                    onClick={() => setClosingAuthId(null)}
+                    onClick={() => {
+                      setClosingAuthId(null)
+                      setCloseDate('')
+                      setCloseDateError('')
+                    }}
                     className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800"
                   >
                     Cancel
@@ -310,6 +318,17 @@ export function validateAuthorizations(
     }
     if (auth.authStart && auth.authEnd && auth.authEnd < auth.authStart) {
       errors[authFieldKey(auth.id, 'authEnd')] = 'End date must be on or after the start date'
+    }
+    if (auth.status === 'closed_early') {
+      if (!auth.closedAt?.trim()) {
+        errors[authFieldKey(auth.id, 'closedAt')] = 'Close date is required for closed authorizations'
+      } else if (auth.authStart && auth.closedAt < auth.authStart) {
+        errors[authFieldKey(auth.id, 'closedAt')] =
+          'Close date must be on or after the authorization start date'
+      } else if (auth.authEnd && auth.closedAt > auth.authEnd) {
+        errors[authFieldKey(auth.id, 'closedAt')] =
+          'Close date must be on or before the authorized end date'
+      }
     }
     const authNumber = auth.authNumber?.trim() ?? ''
     if (!authNumber) {

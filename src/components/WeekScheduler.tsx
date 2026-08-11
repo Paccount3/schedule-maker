@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore'
 import { useConfirm } from '../store/useConfirm'
 import { shiftDeleteConfirm } from '../lib/confirmMessages'
 import { hexToRgba } from '../lib/colors'
-import { resolveSelectedAuthorization, isAuthorizationSchedulable, isCoachingOnlyAuthorization } from '../lib/authorizations'
+import { resolveSelectedAuthorization, isAuthorizationSchedulable, isCoachingOnlyAuthorization, getAuthorizationEffectiveEnd } from '../lib/authorizations'
 import {
   formatShiftConflictSummary,
   formatHoursValue,
@@ -348,7 +348,7 @@ export function WeekScheduler({
       if (original.type !== 'other-coaching' && original.participantId) {
         const p = participantMap.get(original.participantId)
         const auth = p?.authorizations.find((a) => a.id === original.authorizationId)
-        if (auth && (date < auth.authStart || date > auth.authEnd)) {
+        if (auth && (date < auth.authStart || date > getAuthorizationEffectiveEnd(auth))) {
           date = original.date
         }
       }

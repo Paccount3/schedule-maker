@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 import { loadSettings, saveSettings, type AppSettings } from '../lib/settings'
-import { setSoundsFxEnabled } from '../lib/sounds'
+import { setSoundsFxEnabled, setSoundVolume } from '../lib/sounds'
 
 interface SettingsContextValue {
   settings: AppSettings
   setSoundsFxEnabled: (enabled: boolean) => void
+  setSoundVolume: (volume: number) => void
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null)
@@ -13,6 +14,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(() => {
     const loaded = loadSettings()
     setSoundsFxEnabled(loaded.soundsFxEnabled)
+    setSoundVolume(loaded.soundVolume)
     return loaded
   })
 
@@ -25,11 +27,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  const updateSoundVolume = (volume: number) => {
+    const clamped = Math.min(1, Math.max(0, volume))
+    setSoundVolume(clamped)
+    setSettings((prev) => {
+      const next = { ...prev, soundVolume: clamped }
+      saveSettings(next)
+      return next
+    })
+  }
+
   return (
     <SettingsContext.Provider
       value={{
         settings,
         setSoundsFxEnabled: updateSoundsFxEnabled,
+        setSoundVolume: updateSoundVolume,
       }}
     >
       {children}

@@ -2,10 +2,12 @@ const SETTINGS_KEY = 'schedule-maker-settings'
 
 export interface AppSettings {
   soundsFxEnabled: boolean
+  soundVolume: number
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   soundsFxEnabled: true,
+  soundVolume: 1,
 }
 
 export function loadSettings(): AppSettings {
@@ -21,6 +23,10 @@ export function loadSettings(): AppSettings {
         typeof parsed.soundsFxEnabled === 'boolean'
           ? parsed.soundsFxEnabled
           : DEFAULT_SETTINGS.soundsFxEnabled,
+      soundVolume:
+        typeof parsed.soundVolume === 'number' && Number.isFinite(parsed.soundVolume)
+          ? Math.min(1, Math.max(0, parsed.soundVolume))
+          : DEFAULT_SETTINGS.soundVolume,
     }
   } catch {
     return { ...DEFAULT_SETTINGS }

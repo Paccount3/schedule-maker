@@ -1,5 +1,5 @@
 import type { Authorization, Coach, Participant, Shift } from '../types'
-import { isAuthorizationSchedulable } from './authorizations'
+import { getAuthorizationEffectiveEnd, isAuthorizationSchedulable } from './authorizations'
 import {
   COACH_MAX_HOURS,
   getCoachHoursForWeek,
@@ -148,7 +148,12 @@ function dayHasAvailableSlot(
   preferredPeriod: PreferredShiftPeriod,
 ): boolean {
   if (!isAuthorizationSchedulable(authorization)) return false
-  if (date < authorization.authStart || date > authorization.authEnd) return false
+  if (
+    date < authorization.authStart ||
+    date > getAuthorizationEffectiveEnd(authorization)
+  ) {
+    return false
+  }
 
   const dayKey = dayOfWeekFromDate(parseDateInput(date))
   const searchWindow = resolveSearchWindow(coach, dayKey, preferredPeriod)
@@ -282,7 +287,7 @@ export function suggestShiftSlots(
   const searchDates = getSchedulingSearchDates(
     calendarWeekStart,
     authorization.authStart,
-    authorization.authEnd,
+    getAuthorizationEffectiveEnd(authorization),
   )
 
   for (const date of searchDates) {
