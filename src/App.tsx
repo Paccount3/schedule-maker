@@ -7,16 +7,13 @@ import { playSound, playWarningSound } from './lib/sounds'
 import { getWeekDates } from './lib/time'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
-import { ConfettiCelebration } from './components/ConfettiCelebration'
 import { SettingsMenu } from './components/SettingsMenu'
-import { useSettings } from './store/useSettings'
 
 const CELEBRATION_HOLD_MS = 5000
 const CELEBRATION_FADE_MS = 2500
 
 export default function App() {
   const { state } = useStore()
-  const { settings } = useSettings()
 
   const regionAllParticipants = useMemo(
     () => filterParticipantsByRegion(state.participants, state.selectedRegionId),
@@ -317,16 +314,13 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
       {celebration && (
-        <>
-          {settings.soundsFxEnabled && <ConfettiCelebration trigger={celebration.key} />}
-          <div
-            className={`pointer-events-none fixed left-1/2 top-5 z-[210] -translate-x-1/2 rounded-full border border-emerald-500/40 bg-emerald-950/90 px-5 py-2.5 text-sm font-medium text-emerald-200 shadow-lg shadow-emerald-950/50 ${
-              celebration.fading ? 'celebration-banner-out' : 'celebration-banner-in'
-            }`}
-          >
-            {celebration.name} — all shifts scheduled!
-          </div>
-        </>
+        <div
+          className={`pointer-events-none fixed left-1/2 top-5 z-[210] -translate-x-1/2 rounded-full border border-emerald-500/40 bg-emerald-950/90 px-5 py-2.5 text-sm font-medium text-emerald-200 shadow-lg shadow-emerald-950/50 ${
+            celebration.fading ? 'celebration-banner-out' : 'celebration-banner-in'
+          }`}
+        >
+          {celebration.name} — all shifts scheduled!
+        </div>
       )}
       <header className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 bg-slate-900 px-5 py-3">
         <div>

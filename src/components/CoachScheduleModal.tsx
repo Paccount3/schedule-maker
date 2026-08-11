@@ -15,6 +15,7 @@ import { formatWeekLabel } from '../lib/time'
 import { exportScheduleWriteupPdf } from '../lib/scheduleWriteupExport'
 import { CopyTextButton } from './CopyTextButton'
 import { Modal } from './Modal'
+import { OnCallPhoneField, useOnCallPhone } from './OnCallPhoneField'
 
 interface CoachScheduleModalProps {
   weekStart: string
@@ -62,6 +63,7 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
   }, [regionCoaches, regionShifts, weekDates])
 
   const [selectedId, setSelectedId] = useState(() => eligibleCoaches[0]?.id ?? '')
+  const [onCallPhone, setOnCallPhone] = useOnCallPhone(state.selectedRegionId, weekStart)
 
   useEffect(() => {
     if (!eligibleCoaches.some((c) => c.id === selectedId)) {
@@ -80,8 +82,9 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
       regionShifts,
       regionParticipants,
       regionOtherCoaching,
+      onCallPhone,
     )
-  }, [selected, weekDates, weekStart, regionShifts, regionParticipants, regionOtherCoaching])
+  }, [selected, weekDates, weekStart, regionShifts, regionParticipants, regionOtherCoaching, onCallPhone])
 
   const regionLabel = regionName(state.regions, state.selectedRegionId)
 
@@ -142,6 +145,8 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
                 ))}
               </select>
             </label>
+
+            <OnCallPhoneField value={onCallPhone} onChange={setOnCallPhone} />
 
             <div>
               <span className="text-xs font-medium text-slate-400">Schedule write-up</span>

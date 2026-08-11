@@ -123,6 +123,7 @@ export function buildParticipantWeekScheduleWriteup(
   weekStart: string,
   shifts: Shift[],
   coaches: Coach[],
+  onCallPhone?: string,
 ): string {
   const coachMap = new Map(coaches.map((c) => [c.id, c]))
   const weekShifts = shifts
@@ -149,6 +150,9 @@ export function buildParticipantWeekScheduleWriteup(
     )
   }
   lines.push(`Week: ${formatWeekHeading(weekStart)}`)
+  if (onCallPhone?.trim()) {
+    lines.push(`On call phone number: ${onCallPhone.trim()}`)
+  }
   lines.push('')
 
   if (weekShifts.length === 0) {
@@ -191,7 +195,6 @@ export function buildParticipantWeekScheduleWriteup(
       }
       if (coach) {
         lines.push(`Coach: ${coach.name || 'Unnamed'}`)
-        if (coach.phone?.trim()) lines.push(`Coach phone: ${coach.phone.trim()}`)
       } else {
         lines.push('Coach: To be assigned')
       }
@@ -247,6 +250,7 @@ export function buildCoachWeekScheduleWriteup(
   shifts: Shift[],
   participants: Participant[],
   otherCoachingActivities: OtherCoachingActivity[] = [],
+  onCallPhone?: string,
 ): string {
   const participantMap = new Map(participants.map((p) => [p.id, p]))
   const activityMap = new Map(otherCoachingActivities.map((a) => [a.id, a]))
@@ -268,6 +272,9 @@ export function buildCoachWeekScheduleWriteup(
   if (coach.startingLocation) lines.push(`Base location: ${coach.startingLocation}`)
   if (coach.phone?.trim()) lines.push(`Phone: ${coach.phone.trim()}`)
   lines.push(`Week: ${formatWeekHeading(weekStart)}`)
+  if (onCallPhone?.trim()) {
+    lines.push(`On call phone number: ${onCallPhone.trim()}`)
+  }
   lines.push('')
 
   if (weekShifts.length === 0) {

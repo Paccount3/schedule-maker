@@ -199,7 +199,6 @@ function condenseDetails(lines: string[]): {
       fields.get('Coach') && fields.get('Coach') !== 'To be assigned'
         ? `Coach: ${fields.get('Coach')}`
         : undefined,
-      fields.get('Coach phone') ? `Coach phone: ${fields.get('Coach phone')}` : undefined,
       fields.get('Type'),
       ...extras,
     ]
@@ -220,7 +219,6 @@ function condenseDetails(lines: string[]): {
       .join(' · ')
     const secondary = [
       fields.get('Notes'),
-      fields.get('Coach phone') ? `Coach phone: ${fields.get('Coach phone')}` : undefined,
       fields.get('Type'),
       ...extras,
     ]
@@ -241,7 +239,6 @@ function condenseDetails(lines: string[]): {
 
   const secondary = [
     fields.get('Notes'),
-    fields.get('Coach phone'),
     ...extras,
   ]
     .filter(Boolean)
