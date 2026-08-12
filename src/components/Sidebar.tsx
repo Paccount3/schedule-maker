@@ -366,7 +366,7 @@ function ParticipantRow({
 
                 {participant.notes && (
                   <div className="pt-0.5 text-slate-500">
-                    <span className="text-slate-500">Notes: </span>
+                    <span className="text-slate-500">Notes / risks: </span>
                     <span className="text-slate-400">{participant.notes}</span>
                   </div>
                 )}

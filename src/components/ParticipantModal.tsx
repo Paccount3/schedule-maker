@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import type { Participant } from '../types'
 import {
   PARTICIPANT_CHECK_ADDRESS_MAX,
@@ -10,6 +10,11 @@ import { participantDeleteConfirm } from '../lib/confirmMessages'
 import { resolveSelectedAuthorization } from '../lib/authorizations'
 import { hexToRgba } from '../lib/colors'
 import { filterCoachesByRegion } from '../lib/regions'
+import {
+  PARTICIPANT_NOTES_LABEL,
+  validateParticipant,
+  validationSummaryMessages,
+} from '../lib/participantValidation'
 import { getCoachHoursSummary } from '../lib/scheduling'
 import {
   getSlotShortageHint,
@@ -27,13 +32,57 @@ import {
   weekStartForDate,
 } from '../lib/time'
 import { Modal } from './Modal'
-import { AuthorizationsEditor, validateAuthorizations } from './AuthorizationsEditor'
+import { AuthorizationsEditor } from './AuthorizationsEditor'
 import { CalendarScheduleHint } from './CalendarScheduleHint'
 
 const inputClass =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
 
 const NO_COACH_ID = ''
+
+interface SiteFieldProps {
+  initialValue: string
+  draftRef: MutableRefObject<string>
+  invalid?: boolean
+  error?: string
+  onCommit: (site: string) => void
+  onClearError: () => void
+}
+
+/** Local draft state so typing the site does not re-render the modal or trigger slot math. */
+function SiteField({
+  initialValue,
+  draftRef,
+  invalid,
+  error,
+  onCommit,
+  onClearError,
+}: SiteFieldProps) {
+  const [draft, setDraft] = useState(initialValue)
+
+  useEffect(() => {
+    setDraft(initialValue)
+    draftRef.current = initialValue
+  }, [initialValue, draftRef])
+
+  return (
+    <>
+      <input
+        className={`${inputClass} mt-1 ${invalid ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+        placeholder="Work site address"
+        value={draft}
+        onChange={(e) => {
+          const next = e.target.value
+          setDraft(next)
+          draftRef.current = next
+          onClearError()
+        }}
+        onBlur={() => onCommit(draftRef.current)}
+      />
+      {error && <span className="mt-1 block text-xs text-red-400">{error}</span>}
+    </>
+  )
+}
 
 interface ParticipantModalProps {
   participant: Participant
@@ -58,17 +107,34 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
       '',
   )
   const [selectedCoachId, setSelectedCoachId] = useState<string>(() => {
+    if (isNew) return NO_COACH_ID
     const coaches = filterCoachesByRegion(state.coaches, initial.regionId)
-    return coaches[0]?.id ?? ''
+    return coaches[0]?.id ?? NO_COACH_ID
   })
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set())
   const [planShifts, setPlanShifts] = useState(isNew ?? false)
   const [preferredPeriod, setPreferredPeriod] = useState<PreferredShiftPeriod>('morning')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [showValidationSummary, setShowValidationSummary] = useState(false)
+  const siteDraftRef = useRef(initial.site)
+
+  const commitSite = (site: string) => {
+    siteDraftRef.current = site
+    setParticipant((current) => (current.site === site ? current : { ...current, site }))
+  }
+
+  const participantForSave = (): Participant => {
+    const site = siteDraftRef.current
+    return participant.site === site ? participant : { ...participant, site }
+  }
+
+  const enableCoachScheduling = () => {
+    commitSite(siteDraftRef.current)
+  }
 
   const planningAuthorization = useMemo(
     () => resolveSelectedAuthorization(participant, planningAuthorizationId),
-    [participant, planningAuthorizationId],
+    [participant.authorizations, planningAuthorizationId],
   )
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
@@ -77,8 +143,10 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     [state.coaches, participant.regionId],
   )
 
+  const coachSchedulingEnabled = selectedCoachId !== NO_COACH_ID
+
   const coachRankings = useMemo(() => {
-    if (!planningAuthorization) return []
+    if (!planningAuthorization || !coachSchedulingEnabled) return []
     return rankCoachesForParticipant(
       regionCoaches,
       participant,
@@ -92,7 +160,8 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     )
   }, [
     regionCoaches,
-    participant,
+    participant.id,
+    participant.authorizations,
     planningAuthorization,
     state.weekStart,
     weekDates,
@@ -100,12 +169,15 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     shiftDurationHours,
     shiftCount,
     preferredPeriod,
+    coachSchedulingEnabled,
   ])
 
   const selectedCoach = regionCoaches.find((c) => c.id === selectedCoachId)
 
   const suggestedSlots = useMemo(() => {
-    if (!selectedCoach || !planShifts || !planningAuthorization) return []
+    if (!selectedCoach || !planShifts || !planningAuthorization || !coachSchedulingEnabled) {
+      return []
+    }
     return pickBestSlots(
       selectedCoach,
       participant,
@@ -118,7 +190,8 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     )
   }, [
     selectedCoach,
-    participant,
+    participant.id,
+    participant.authorizations,
     planningAuthorization,
     state.weekStart,
     state.shifts,
@@ -126,6 +199,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     shiftCount,
     planShifts,
     preferredPeriod,
+    coachSchedulingEnabled,
   ])
 
   useEffect(() => {
@@ -148,21 +222,21 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   const willScheduleOnSave = planShifts && selectedSlots.length > 0 && !!selectedCoach
 
   const save = () => {
-    const errors: Record<string, string> = {}
-    if (!participant.name.trim()) errors.name = 'Name is required'
-    if (!participant.site.trim()) errors.site = 'Work site is required'
-    Object.assign(errors, validateAuthorizations(participant))
+    const toSave = participantForSave()
+    const errors = validateParticipant(toSave)
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
+      setShowValidationSummary(true)
       return
     }
 
-    updateParticipant(participant)
+    setShowValidationSummary(false)
+    updateParticipant(toSave)
 
     if (planShifts && selectedSlots.length > 0 && selectedCoach && planningAuthorization) {
       addShifts(
         selectedSlots.map((slot) => ({
-          participantId: participant.id,
+          participantId: toSave.id,
           authorizationId: planningAuthorization.id,
           date: slot.date,
           startMinutes: slot.startMinutes,
@@ -227,6 +301,8 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
     suggestedSlots.length > 0 &&
     new Set(suggestedSlots.map((s) => weekStartForDate(s.date))).size > 1
 
+  const validationMessages = validationSummaryMessages(fieldErrors)
+
   return (
     <Modal
       wide
@@ -268,6 +344,19 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
       }
     >
       <div className="space-y-6">
+        {showValidationSummary && validationMessages.length > 0 && (
+          <div className="rounded-md border border-red-800/50 bg-red-950/30 px-4 py-3">
+            <p className="text-sm font-medium text-red-200">
+              Please complete the required fields before saving:
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-red-200/90">
+              {validationMessages.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-slate-400">
@@ -305,46 +394,66 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
             </select>
           </label>
           <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-400">Phone</span>
+            <span className="text-xs font-medium text-slate-400">
+              Phone <span className="text-red-400">*</span>
+            </span>
             <input
-              className={`${inputClass} mt-1`}
+              className={`${inputClass} mt-1 ${fieldErrors.phone ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
               placeholder="Phone number"
               type="tel"
               value={participant.phone}
-              onChange={(e) => setParticipant({ ...participant, phone: e.target.value })}
+              onChange={(e) => {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.phone
+                  return next
+                })
+                setParticipant({ ...participant, phone: e.target.value })
+              }}
             />
+            {fieldErrors.phone && (
+              <span className="mt-1 block text-xs text-red-400">{fieldErrors.phone}</span>
+            )}
           </label>
           <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-slate-400">
               Site <span className="text-red-400">*</span>
             </span>
-            <input
-              className={`${inputClass} mt-1 ${fieldErrors.site ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-              placeholder="Work site address"
-              value={participant.site}
-              onChange={(e) => {
+            <SiteField
+              initialValue={participant.site}
+              draftRef={siteDraftRef}
+              invalid={!!fieldErrors.site}
+              error={fieldErrors.site}
+              onCommit={commitSite}
+              onClearError={() =>
                 setFieldErrors((prev) => {
                   const next = { ...prev }
                   delete next.site
                   return next
                 })
-                setParticipant({ ...participant, site: e.target.value })
-              }}
-            />
-            {fieldErrors.site && (
-              <span className="mt-1 block text-xs text-red-400">{fieldErrors.site}</span>
-            )}
-          </label>
-          <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-400">Site Contact</span>
-            <input
-              className={`${inputClass} mt-1`}
-              placeholder="Contact name at site"
-              value={participant.siteContact}
-              onChange={(e) =>
-                setParticipant({ ...participant, siteContact: e.target.value })
               }
             />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-400">
+              Site Contact <span className="text-red-400">*</span>
+            </span>
+            <input
+              className={`${inputClass} mt-1 ${fieldErrors.siteContact ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+              placeholder="Contact name at site"
+              value={participant.siteContact}
+              onChange={(e) => {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.siteContact
+                  return next
+                })
+                setParticipant({ ...participant, siteContact: e.target.value })
+              }}
+            />
+            {fieldErrors.siteContact && (
+              <span className="mt-1 block text-xs text-red-400">{fieldErrors.siteContact}</span>
+            )}
           </label>
           <AuthorizationsEditor
             participant={participant}
@@ -359,20 +468,32 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
             }
           />
           <label className="block sm:col-span-2">
-            <span className="text-xs font-medium text-slate-400">Best Participant Address for Checks</span>
+            <span className="text-xs font-medium text-slate-400">
+              Best Participant Address for Checks <span className="text-red-400">*</span>
+            </span>
             <textarea
-              className={`${inputClass} mt-1 min-h-[3.25rem] resize-y`}
+              className={`${inputClass} mt-1 min-h-[3.25rem] resize-y ${fieldErrors.bestAddressForChecks ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
               placeholder="Street address, city, state, ZIP"
               rows={2}
               maxLength={PARTICIPANT_CHECK_ADDRESS_MAX}
               value={participant.bestAddressForChecks}
-              onChange={(e) =>
+              onChange={(e) => {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.bestAddressForChecks
+                  return next
+                })
                 setParticipant({
                   ...participant,
                   bestAddressForChecks: e.target.value.slice(0, PARTICIPANT_CHECK_ADDRESS_MAX),
                 })
-              }
+              }}
             />
+            {fieldErrors.bestAddressForChecks && (
+              <span className="mt-1 block text-xs text-red-400">
+                {fieldErrors.bestAddressForChecks}
+              </span>
+            )}
             <span className="mt-0.5 block text-[10px] tabular-nums text-slate-500">
               {participant.bestAddressForChecks.length}/{PARTICIPANT_CHECK_ADDRESS_MAX}
             </span>
@@ -400,7 +521,10 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
                 <div className="space-y-1">
                   <button
                     type="button"
-                    onClick={() => setSelectedCoachId(NO_COACH_ID)}
+                    onClick={() => {
+                      enableCoachScheduling()
+                      setSelectedCoachId(NO_COACH_ID)
+                    }}
                     className={`flex w-full items-center rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                       selectedCoachId === NO_COACH_ID
                         ? 'border-slate-500 bg-slate-800/80'
@@ -412,57 +536,79 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
                       Skip scheduling — assign a coach later on the calendar
                     </span>
                   </button>
-                  {coachRankings.map(
-                    ({ coach, assigned, maxHours, fitsAll, sameSite, slotCount }) => {
-                      const selected = selectedCoachId === coach.id
-                      const maxDisplay = Math.round(maxHours * 10) / 10
-                      return (
+                  {coachSchedulingEnabled
+                    ? coachRankings.map(
+                        ({ coach, assigned, maxHours, fitsAll, sameSite, slotCount }) => {
+                          const selected = selectedCoachId === coach.id
+                          const maxDisplay = Math.round(maxHours * 10) / 10
+                          return (
+                            <button
+                              key={coach.id}
+                              type="button"
+                              onClick={() => {
+                                enableCoachScheduling()
+                                setSelectedCoachId(coach.id)
+                              }}
+                              className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
+                                selected
+                                  ? 'border-blue-500 bg-blue-950/40'
+                                  : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800'
+                              }`}
+                            >
+                              <span className="flex items-center gap-2">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full"
+                                  style={{ backgroundColor: coach.color }}
+                                />
+                                <span className="text-slate-200">{coach.name || 'Unnamed'}</span>
+                                <span className="text-xs text-slate-500">{coach.startingLocation}</span>
+                                {sameSite && (
+                                  <span className="rounded bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                                    Same site
+                                  </span>
+                                )}
+                                {!fitsAll && (
+                                  <span className="rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                                    Limited slots
+                                  </span>
+                                )}
+                              </span>
+                              <span className="flex items-center gap-3 text-xs tabular-nums">
+                                <span className="text-slate-500">{slotCount} slots found</span>
+                                <span
+                                  className={
+                                    maxHours > 0 && assigned > maxHours
+                                      ? 'text-red-400'
+                                      : maxHours > 0 && assigned >= maxHours * 0.75
+                                        ? 'text-amber-400'
+                                        : 'text-slate-400'
+                                  }
+                                >
+                                  {Math.round(assigned * 10) / 10}/{maxDisplay}
+                                </span>
+                              </span>
+                            </button>
+                          )
+                        },
+                      )
+                    : regionCoaches.map((coach) => (
                         <button
                           key={coach.id}
                           type="button"
-                          onClick={() => setSelectedCoachId(coach.id)}
-                          className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                            selected
-                              ? 'border-blue-500 bg-blue-950/40'
-                              : 'border-slate-700 hover:border-slate-600 hover:bg-slate-800'
-                          }`}
+                          onClick={() => {
+                            enableCoachScheduling()
+                            setSelectedCoachId(coach.id)
+                          }}
+                          className="flex w-full items-center gap-2 rounded-md border border-slate-700 px-3 py-2 text-left text-sm transition-colors hover:border-slate-600 hover:bg-slate-800"
                         >
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: coach.color }}
-                            />
-                            <span className="text-slate-200">{coach.name || 'Unnamed'}</span>
-                            <span className="text-xs text-slate-500">{coach.startingLocation}</span>
-                            {sameSite && (
-                              <span className="rounded bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                                Same site
-                              </span>
-                            )}
-                            {!fitsAll && (
-                              <span className="rounded bg-amber-950/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                                Limited slots
-                              </span>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-3 text-xs tabular-nums">
-                            <span className="text-slate-500">{slotCount} slots found</span>
-                            <span
-                              className={
-                                maxHours > 0 && assigned > maxHours
-                                  ? 'text-red-400'
-                                  : maxHours > 0 && assigned >= maxHours * 0.75
-                                    ? 'text-amber-400'
-                                    : 'text-slate-400'
-                              }
-                            >
-                              {Math.round(assigned * 10) / 10}/{maxDisplay}
-                            </span>
-                          </span>
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: coach.color }}
+                          />
+                          <span className="text-slate-200">{coach.name || 'Unnamed'}</span>
+                          <span className="text-xs text-slate-500">{coach.startingLocation}</span>
                         </button>
-                      )
-                    },
-                  )}
+                      ))}
                 </div>
               )}
             </div>
@@ -667,19 +813,29 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
         )}
 
         <label className="block">
-          <span className="text-xs font-medium text-slate-400">Notes</span>
+          <span className="text-xs font-medium text-slate-400">
+            {PARTICIPANT_NOTES_LABEL} <span className="text-red-400">*</span>
+          </span>
           <input
-            className={`${inputClass} mt-1`}
-            placeholder="Short note (optional)"
+            className={`${inputClass} mt-1 ${fieldErrors.notes ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+            placeholder="Brief notes or risks for coaches"
             maxLength={PARTICIPANT_NOTES_MAX}
             value={participant.notes}
-            onChange={(e) =>
+            onChange={(e) => {
+              setFieldErrors((prev) => {
+                const next = { ...prev }
+                delete next.notes
+                return next
+              })
               setParticipant({
                 ...participant,
                 notes: e.target.value.slice(0, PARTICIPANT_NOTES_MAX),
               })
-            }
+            }}
           />
+          {fieldErrors.notes && (
+            <span className="mt-1 block text-xs text-red-400">{fieldErrors.notes}</span>
+          )}
           <span className="mt-0.5 block text-[10px] tabular-nums text-slate-500">
             {participant.notes.length}/{PARTICIPANT_NOTES_MAX}
           </span>

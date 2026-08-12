@@ -10,6 +10,9 @@ import { useConfirm } from '../store/useConfirm'
 import { authorizationDeleteConfirm } from '../lib/confirmMessages'
 import { AuthorizationStatusBadge } from './AuthorizationStatusBadge'
 import { DateSelect } from './DateSelect'
+import { authFieldKey } from '../lib/participantValidation'
+
+export { authFieldKey, validateAuthorizations } from '../lib/participantValidation'
 
 const inputClass =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
@@ -19,10 +22,6 @@ interface AuthorizationsEditorProps {
   onChange: (participant: Participant) => void
   fieldErrors: Record<string, string>
   onClearFieldError: (key: string) => void
-}
-
-function authFieldKey(authId: string, field: string): string {
-  return `auth_${authId}_${field}`
 }
 
 export function AuthorizationsEditor({
@@ -120,6 +119,10 @@ export function AuthorizationsEditor({
         </button>
       </div>
 
+      {fieldErrors.auth_list && (
+        <p className="text-xs text-red-400">{fieldErrors.auth_list}</p>
+      )}
+
       {participant.authorizations.map((auth, index) => {
         const coachingOnly = isCoachingOnlyAuthorization(auth)
         return (
@@ -136,7 +139,9 @@ export function AuthorizationsEditor({
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
-                <span className="text-xs font-medium text-slate-400">Service</span>
+                <span className="text-xs font-medium text-slate-400">
+                  Service <span className="text-red-400">*</span>
+                </span>
                 <select
                   className={`${inputClass} mt-1`}
                   value={auth.service}
@@ -173,29 +178,45 @@ export function AuthorizationsEditor({
               </label>
               {!coachingOnly && (
                 <label className="block">
-                  <span className="text-xs font-medium text-slate-400">Working Hours</span>
+                  <span className="text-xs font-medium text-slate-400">
+                    Working Hours <span className="text-red-400">*</span>
+                  </span>
                   <input
                     type="number"
                     min={0}
-                    className={`${inputClass} mt-1`}
+                    className={`${inputClass} mt-1 ${fieldErrors[authFieldKey(auth.id, 'workingHours')] ? 'border-red-500' : ''}`}
                     value={auth.workingHours}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      onClearFieldError(authFieldKey(auth.id, 'workingHours'))
                       updateAuth(auth.id, { workingHours: Number(e.target.value) })
-                    }
+                    }}
                   />
+                  {fieldErrors[authFieldKey(auth.id, 'workingHours')] && (
+                    <span className="mt-1 block text-xs text-red-400">
+                      {fieldErrors[authFieldKey(auth.id, 'workingHours')]}
+                    </span>
+                  )}
                 </label>
               )}
               <label className={`block ${coachingOnly ? 'sm:col-span-2' : ''}`}>
-                <span className="text-xs font-medium text-slate-400">Coaching Hours</span>
+                <span className="text-xs font-medium text-slate-400">
+                  Coaching Hours <span className="text-red-400">*</span>
+                </span>
                 <input
                   type="number"
                   min={0}
-                  className={`${inputClass} mt-1`}
+                  className={`${inputClass} mt-1 ${fieldErrors[authFieldKey(auth.id, 'coachingHours')] ? 'border-red-500' : ''}`}
                   value={auth.coachingHours}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    onClearFieldError(authFieldKey(auth.id, 'coachingHours'))
                     updateAuth(auth.id, { coachingHours: Number(e.target.value) })
-                  }
+                  }}
                 />
+                {fieldErrors[authFieldKey(auth.id, 'coachingHours')] && (
+                  <span className="mt-1 block text-xs text-red-400">
+                    {fieldErrors[authFieldKey(auth.id, 'coachingHours')]}
+                  </span>
+                )}
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-400">
@@ -210,6 +231,11 @@ export function AuthorizationsEditor({
                     updateAuth(auth.id, { authStart })
                   }}
                 />
+                {fieldErrors[authFieldKey(auth.id, 'authStart')] && (
+                  <span className="mt-1 block text-xs text-red-400">
+                    {fieldErrors[authFieldKey(auth.id, 'authStart')]}
+                  </span>
+                )}
               </label>
               <label className="block">
                 <span className="text-xs font-medium text-slate-400">
@@ -223,6 +249,11 @@ export function AuthorizationsEditor({
                     updateAuth(auth.id, { authEnd })
                   }}
                 />
+                {fieldErrors[authFieldKey(auth.id, 'authEnd')] && (
+                  <span className="mt-1 block text-xs text-red-400">
+                    {fieldErrors[authFieldKey(auth.id, 'authEnd')]}
+                  </span>
+                )}
               </label>
             </div>
 
@@ -303,43 +334,4 @@ export function AuthorizationsEditor({
       })}
     </div>
   )
-}
-
-export function validateAuthorizations(
-  participant: Participant,
-): Record<string, string> {
-  const errors: Record<string, string> = {}
-  for (const auth of participant.authorizations) {
-    if (!auth.authStart?.trim()) {
-      errors[authFieldKey(auth.id, 'authStart')] = 'Authorization start is required'
-    }
-    if (!auth.authEnd?.trim()) {
-      errors[authFieldKey(auth.id, 'authEnd')] = 'Authorization end is required'
-    }
-    if (auth.authStart && auth.authEnd && auth.authEnd < auth.authStart) {
-      errors[authFieldKey(auth.id, 'authEnd')] = 'End date must be on or after the start date'
-    }
-    if (auth.status === 'closed_early') {
-      if (!auth.closedAt?.trim()) {
-        errors[authFieldKey(auth.id, 'closedAt')] = 'Close date is required for closed authorizations'
-      } else if (auth.authStart && auth.closedAt < auth.authStart) {
-        errors[authFieldKey(auth.id, 'closedAt')] =
-          'Close date must be on or after the authorization start date'
-      } else if (auth.authEnd && auth.closedAt > auth.authEnd) {
-        errors[authFieldKey(auth.id, 'closedAt')] =
-          'Close date must be on or before the authorized end date'
-      }
-    }
-    const authNumber = auth.authNumber?.trim() ?? ''
-    if (!authNumber) {
-      errors[authFieldKey(auth.id, 'authNumber')] = 'Authorization number is required'
-    } else if (authNumber.length !== PARTICIPANT_AUTH_NUMBER_LENGTH) {
-      errors[authFieldKey(auth.id, 'authNumber')] =
-        `Authorization number must be exactly ${PARTICIPANT_AUTH_NUMBER_LENGTH} characters`
-    }
-  }
-  if (participant.authorizations.length === 0) {
-    errors.auth_list = 'At least one authorization is required'
-  }
-  return errors
 }

@@ -332,6 +332,7 @@ export function buildCoachWeekScheduleWriteup(
       lines.push(`Participant: ${p?.name || 'Unnamed'}`)
       if (p?.site) lines.push(`Site: ${p.site}`)
       if (p?.siteContact?.trim()) lines.push(`Site contact: ${p.siteContact.trim()}`)
+      if (p?.notes?.trim()) lines.push(`Notes / risks: ${p.notes.trim()}`)
       const shiftAuth = shift.authorizationId
         ? p?.authorizations.find((a) => a.id === shift.authorizationId)
         : undefined

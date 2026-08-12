@@ -194,6 +194,7 @@ function condenseDetails(lines: string[]): {
       .filter(Boolean)
       .join(' · ')
     const secondary = [
+      fields.get('Notes / risks'),
       fields.get('Notes'),
       fields.get('Shift notes'),
       fields.get('Coach') && fields.get('Coach') !== 'To be assigned'
