@@ -414,6 +414,27 @@ function ParticipantRow({
           ✎
         </button>
         )}
+        {authorization && (
+          <div
+            className="flex h-7 items-center pl-0.5"
+            title={
+              coachingOnly
+                ? 'Job Coaching — working hours do not apply'
+                : 'Worked hours / authorized working hours'
+            }
+          >
+            {coachingOnly ? (
+              <span className="inline-block min-w-[2.75rem] text-right text-xs font-semibold tabular-nums text-slate-400">
+                JC
+              </span>
+            ) : (
+              <CoachHoursLabel
+                assigned={totalHours.totalWork}
+                max={authorization.workingHours}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -570,7 +591,7 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
+      <aside className="flex h-full min-h-0 w-80 shrink-0 flex-col border-r border-slate-800 bg-slate-900">
         <div className="shrink-0 border-b border-slate-800 p-3">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">

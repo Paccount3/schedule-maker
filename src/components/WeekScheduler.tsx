@@ -139,6 +139,7 @@ export function WeekScheduler({
   const [isNewShift, setIsNewShift] = useState(false)
   const [dragPreview, setDragPreview] = useState<ShiftDragPreview | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [showSoloShifts, setShowSoloShifts] = useState(true)
   const [reportOpen, setReportOpen] = useState(false)
   const [participantScheduleOpen, setParticipantScheduleOpen] = useState(false)
   const [coachScheduleOpen, setCoachScheduleOpen] = useState(false)
@@ -229,13 +230,21 @@ export function WeekScheduler({
             (!s.coachId || visibleCoachShiftIds.has(s.coachId))
           )
         }
+        if (s.type === 'solo' && !showSoloShifts) return false
         return (
           !!s.participantId &&
           visibleParticipantIds.has(s.participantId) &&
           (s.type !== 'coached' || !s.coachId || visibleCoachShiftIds.has(s.coachId))
         )
       }),
-    [regionShifts, weekDates, visibleParticipantIds, visibleCoachShiftIds, visibleOtherCoachingIds],
+    [
+      regionShifts,
+      weekDates,
+      visibleParticipantIds,
+      visibleCoachShiftIds,
+      visibleOtherCoachingIds,
+      showSoloShifts,
+    ],
   )
 
   const hoursSummary =
@@ -479,6 +488,22 @@ export function WeekScheduler({
         </div>
 
         <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-self-end">
+          <button
+            type="button"
+            onClick={() => setShowSoloShifts((visible) => !visible)}
+            className={`rounded-md border px-3 py-2 text-sm hover:bg-slate-800 ${
+              showSoloShifts
+                ? 'border-slate-700 bg-slate-900 text-slate-300'
+                : 'border-slate-600 bg-slate-800 text-slate-400'
+            }`}
+            title={
+              showSoloShifts
+                ? 'Hide solo (uncoached) shift blocks on the calendar'
+                : 'Show solo (uncoached) shift blocks on the calendar'
+            }
+          >
+            {showSoloShifts ? 'Hide Solo Shifts' : 'Show Solo Shifts'}
+          </button>
           {canEdit && (
           <button
             onClick={() => {
