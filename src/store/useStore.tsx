@@ -12,15 +12,28 @@ import {
   createEmptyParticipant,
   createOtherCoachingShift,
   createShift,
-  loadState,
-  saveState,
 } from '../lib/storage'
 import { buildCopiedShiftsFromPreviousWeek } from '../lib/scheduling'
 import { playSound, playSoundOption, type SoundOption } from '../lib/sounds'
+import {
+  deleteCoach,
+  deleteOtherCoaching,
+  deleteParticipant,
+  deleteShift,
+  loadAppStateFromSupabase,
+  loadUiPrefs,
+  persistCoach,
+  persistOtherCoaching,
+  persistParticipant,
+  persistRegion,
+  persistShifts,
+  saveUiPrefs,
+} from '../lib/supabaseSync'
 import { addDays, durationHours, endMinutesFromStartingHours, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
 
 interface StoreContextValue {
   state: AppState
+  persistError: string | null
   setSelectedRegionId: (regionId: string) => void
   addRegion: (name: string) => string | null
   setWeekStart: (weekStart: string) => void
@@ -60,75 +73,143 @@ interface StoreContextValue {
 
 const StoreContext = createContext<StoreContextValue | null>(null)
 
+function emptyState(): AppState {
+  return {
+    regions: [],
+    selectedRegionId: '',
+    participants: [],
+    coaches: [],
+    otherCoachingActivities: [],
+    shifts: [],
+    weekStart: toDateInput(startOfWeek(new Date())),
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AppState>(loadState)
+  const [state, setState] = useState<AppState>(emptyState)
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [persistError, setPersistError] = useState<string | null>(null)
 
   useEffect(() => {
-    saveState(state)
-  }, [state])
+    let cancelled = false
+    void (async () => {
+      try {
+        const next = await loadAppStateFromSupabase()
+        if (cancelled) return
+        setState(next)
+        setStatus('ready')
+      } catch (error) {
+        if (cancelled) return
+        setLoadError(error instanceof Error ? error.message : 'Failed to load schedule data')
+        setStatus('error')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const persist = (label: string, task: () => Promise<void>) => {
+    void task().then(
+      () => setPersistError(null),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : `Failed to save (${label})`
+        console.error(label, error)
+        setPersistError(message)
+      },
+    )
+  }
 
   const update = (fn: (prev: AppState) => AppState) => setState(fn)
 
   const value: StoreContextValue = {
     state,
+    persistError,
     setSelectedRegionId: (regionId) =>
-      update((s) =>
-        s.regions.some((r) => r.id === regionId)
-          ? { ...s, selectedRegionId: regionId }
-          : s,
-      ),
+      update((s) => {
+        if (!s.regions.some((r) => r.id === regionId)) return s
+        saveUiPrefs({ ...loadUiPrefs(), selectedRegionId: regionId })
+        return { ...s, selectedRegionId: regionId }
+      }),
     addRegion: (name) => {
       const trimmed = name.trim()
       if (!trimmed) return null
       const existingIds = new Set(state.regions.map((r) => r.id))
       const id = regionIdFromName(trimmed, existingIds)
+      const region = { id, name: trimmed }
       update((s) => ({
         ...s,
-        regions: [...s.regions, { id, name: trimmed }],
+        regions: [...s.regions, region],
       }))
+      persist('addRegion', () => persistRegion(region))
       return id
     },
-    setWeekStart: (weekStart) => update((s) => ({ ...s, weekStart })),
+    setWeekStart: (weekStart) =>
+      update((s) => {
+        saveUiPrefs({ ...loadUiPrefs(), weekStart })
+        return { ...s, weekStart }
+      }),
     prevWeek: () =>
-      update((s) => ({
-        ...s,
-        weekStart: toDateInput(addDays(parseDateInput(s.weekStart), -7)),
-      })),
+      update((s) => {
+        const weekStart = toDateInput(addDays(parseDateInput(s.weekStart), -7))
+        saveUiPrefs({ ...loadUiPrefs(), weekStart })
+        return { ...s, weekStart }
+      }),
     nextWeek: () =>
-      update((s) => ({
-        ...s,
-        weekStart: toDateInput(addDays(parseDateInput(s.weekStart), 7)),
-      })),
+      update((s) => {
+        const weekStart = toDateInput(addDays(parseDateInput(s.weekStart), 7))
+        saveUiPrefs({ ...loadUiPrefs(), weekStart })
+        return { ...s, weekStart }
+      }),
     goToToday: () =>
-      update((s) => ({ ...s, weekStart: toDateInput(startOfWeek(new Date())) })),
+      update((s) => {
+        const weekStart = toDateInput(startOfWeek(new Date()))
+        saveUiPrefs({ ...loadUiPrefs(), weekStart })
+        return { ...s, weekStart }
+      }),
     addParticipant: () => {
       const p = createEmptyParticipant(state.selectedRegionId)
       update((s) => ({ ...s, participants: [...s.participants, p] }))
+      persist('addParticipant', () => persistParticipant(p))
       return p
     },
-    updateParticipant: (p) =>
+    updateParticipant: (p) => {
       update((s) => ({
         ...s,
         participants: s.participants.map((x) => (x.id === p.id ? p : x)),
-      })),
-    removeParticipant: (id) =>
+      }))
+      persist('updateParticipant', () => persistParticipant(p))
+    },
+    removeParticipant: (id) => {
       update((s) => ({
         ...s,
         participants: s.participants.filter((x) => x.id !== id),
         shifts: s.shifts.filter((x) => x.participantId !== id),
-      })),
+      }))
+      persist('removeParticipant', () => deleteParticipant(id))
+    },
     addCoach: () => {
       const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
       const c = createEmptyCoach(regionCoaches.length, state.selectedRegionId)
       update((s) => ({ ...s, coaches: [...s.coaches, c] }))
+      persist('addCoach', () => persistCoach(c))
       return c
     },
-    updateCoach: (c) =>
+    updateCoach: (c) => {
       update((s) => ({
         ...s,
         coaches: s.coaches.map((x) => (x.id === c.id ? c : x)),
-      })),
-    removeCoach: (id) =>
+      }))
+      persist('updateCoach', () => persistCoach(c))
+    },
+    removeCoach: (id) => {
+      const deletedShiftIds = state.shifts
+        .filter((sh) => sh.type === 'other-coaching' && sh.coachId === id)
+        .map((sh) => sh.id)
+      const convertedShifts = state.shifts
+        .filter((sh) => sh.coachId === id && sh.type !== 'other-coaching')
+        .map((sh) => ({ ...sh, coachId: undefined, type: 'solo' as const }))
       update((s) => ({
         ...s,
         coaches: s.coaches.filter((x) => x.id !== id),
@@ -137,7 +218,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           .map((sh) =>
             sh.coachId === id ? { ...sh, coachId: undefined, type: 'solo' as const } : sh,
           ),
-      })),
+      }))
+      persist('removeCoach', () => deleteCoach(id, convertedShifts, deletedShiftIds))
+    },
     addOtherCoachingActivity: () => {
       const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
       const activity = createEmptyOtherCoachingActivity(
@@ -148,41 +231,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...s,
         otherCoachingActivities: [...s.otherCoachingActivities, activity],
       }))
+      persist('addOtherCoaching', () => persistOtherCoaching(activity))
       return activity
     },
-    updateOtherCoachingActivity: (activity) =>
+    updateOtherCoachingActivity: (activity) => {
+      const normalized = { ...activity, shiftsPerWeek: 1 }
+      let relatedShifts: Shift[] = []
       update((s) => {
-        const normalized = { ...activity, shiftsPerWeek: 1 }
+        const shifts = s.shifts.map((sh) => {
+          if (sh.otherCoachingActivityId !== normalized.id || sh.type !== 'other-coaching') {
+            return sh
+          }
+          const endMinutes = endMinutesFromStartingHours(
+            sh.startMinutes,
+            normalized.hoursPerWeek,
+          )
+          return {
+            ...sh,
+            coachId: normalized.coachId || sh.coachId,
+            endMinutes: Math.max(sh.startMinutes + 30, endMinutes),
+          }
+        })
+        relatedShifts = shifts.filter(
+          (sh) => sh.otherCoachingActivityId === normalized.id && sh.type === 'other-coaching',
+        )
         return {
           ...s,
           otherCoachingActivities: s.otherCoachingActivities.map((x) =>
             x.id === normalized.id ? normalized : x,
           ),
-          shifts: s.shifts.map((sh) => {
-            if (sh.otherCoachingActivityId !== normalized.id || sh.type !== 'other-coaching') {
-              return sh
-            }
-            const endMinutes = endMinutesFromStartingHours(
-              sh.startMinutes,
-              normalized.hoursPerWeek,
-            )
-            return {
-              ...sh,
-              coachId: normalized.coachId || sh.coachId,
-              endMinutes: Math.max(sh.startMinutes + 30, endMinutes),
-            }
-          }),
+          shifts,
         }
-      }),
-    removeOtherCoachingActivity: (id) =>
+      })
+      persist('updateOtherCoaching', async () => {
+        await persistOtherCoaching(normalized)
+        await persistShifts(relatedShifts)
+      })
+    },
+    removeOtherCoachingActivity: (id) => {
       update((s) => ({
         ...s,
         otherCoachingActivities: s.otherCoachingActivities.filter((x) => x.id !== id),
         shifts: s.shifts.filter((x) => x.otherCoachingActivityId !== id),
-      })),
+      }))
+      persist('removeOtherCoaching', () => deleteOtherCoaching(id))
+    },
     addShift: (shiftData, sound) => {
       const shift: Shift = { ...shiftData, id: crypto.randomUUID() }
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      persist('addShift', () => persistShifts([shift]))
       playSoundOption(sound, 'place')
       return shift
     },
@@ -192,48 +289,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         id: crypto.randomUUID(),
       }))
       update((s) => ({ ...s, shifts: [...s.shifts, ...newShifts] }))
+      persist('addShifts', () => persistShifts(newShifts))
       playSoundOption(sound, newShifts.length > 1 ? 'bulk' : 'place')
     },
     updateShift: (shift, sound) => {
+      let relatedShifts: Shift[] = [shift]
+      let relatedActivity: OtherCoachingActivity | undefined
       update((s) => {
         if (shift.type === 'other-coaching' && shift.otherCoachingActivityId) {
           const activityId = shift.otherCoachingActivityId
           const hoursPerWeek = durationHours(shift.startMinutes, shift.endMinutes)
           const coachId = shift.coachId
-          return {
-            ...s,
-            otherCoachingActivities: s.otherCoachingActivities.map((a) =>
-              a.id === activityId
-                ? {
-                    ...a,
-                    hoursPerWeek,
-                    ...(coachId ? { coachId } : {}),
-                  }
-                : a,
-            ),
-            shifts: s.shifts.map((sh) => {
-              if (sh.id === shift.id) return shift
-              if (sh.otherCoachingActivityId === activityId && sh.type === 'other-coaching' && coachId) {
-                return { ...sh, coachId }
-              }
-              return sh
-            }),
-          }
+          const otherCoachingActivities = s.otherCoachingActivities.map((a) =>
+            a.id === activityId
+              ? {
+                  ...a,
+                  hoursPerWeek,
+                  ...(coachId ? { coachId } : {}),
+                }
+              : a,
+          )
+          relatedActivity = otherCoachingActivities.find((a) => a.id === activityId)
+          const shifts = s.shifts.map((sh) => {
+            if (sh.id === shift.id) return shift
+            if (sh.otherCoachingActivityId === activityId && sh.type === 'other-coaching' && coachId) {
+              return { ...sh, coachId }
+            }
+            return sh
+          })
+          relatedShifts = shifts.filter(
+            (sh) => sh.id === shift.id || (sh.otherCoachingActivityId === activityId && sh.type === 'other-coaching'),
+          )
+          return { ...s, otherCoachingActivities, shifts }
         }
         return {
           ...s,
           shifts: s.shifts.map((x) => (x.id === shift.id ? shift : x)),
         }
       })
+      persist('updateShift', async () => {
+        if (relatedActivity) await persistOtherCoaching(relatedActivity)
+        await persistShifts(relatedShifts)
+      })
       playSoundOption(sound, 'drop')
     },
     removeShift: (id, sound) => {
       update((s) => ({ ...s, shifts: s.shifts.filter((x) => x.id !== id) }))
+      persist('removeShift', () => deleteShift(id))
       playSoundOption(sound, 'delete')
     },
     createQuickShift: (participantId, authorizationId, date, startMinutes, endMinutes, type = 'solo') => {
       const shift = createShift(participantId, authorizationId, date, startMinutes, endMinutes, type)
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      persist('createQuickShift', () => persistShifts([shift]))
       playSound('place')
       return shift
     },
@@ -246,6 +354,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         endMinutes,
       )
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
+      persist('createQuickOtherCoachingShift', () => persistShifts([shift]))
       playSound('place')
       return shift
     },
@@ -268,12 +377,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (copied.length === 0) return 0
       const newShifts: Shift[] = copied.map((d) => ({ ...d, id: crypto.randomUUID() }))
       update((s) => ({ ...s, shifts: [...s.shifts, ...newShifts] }))
+      persist('copyShiftsFromPreviousWeek', () => persistShifts(newShifts))
       playSound('bulk')
       return copied.length
     },
   }
 
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-300">
+        Loading schedule…
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-950 px-6 text-center">
+        <p className="text-lg font-medium text-slate-100">Could not load schedule data</p>
+        <p className="max-w-md text-sm text-slate-400">{loadError}</p>
+        <button
+          type="button"
+          className="rounded-md bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-500"
+          onClick={() => window.location.reload()}
+        >
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <StoreContext.Provider value={value}>
+      {persistError && (
+        <div className="bg-red-950 px-4 py-2 text-center text-sm text-red-200">
+          Could not save to the database: {persistError}
+        </div>
+      )}
+      {children}
+    </StoreContext.Provider>
+  )
 }
 
 export function useStore(): StoreContextValue {
