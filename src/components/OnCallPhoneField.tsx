@@ -41,18 +41,20 @@ export function useOnCallPhone(regionId: string, weekStart: string): [string, (v
 interface OnCallPhoneFieldProps {
   value: string
   onChange: (value: string) => void
+  readOnly?: boolean
 }
 
-export function OnCallPhoneField({ value, onChange }: OnCallPhoneFieldProps) {
+export function OnCallPhoneField({ value, onChange, readOnly = false }: OnCallPhoneFieldProps) {
   return (
     <label className="block">
       <span className="text-xs font-medium text-slate-400">Include On Call Phone Number</span>
       <input
         type="tel"
         value={value}
+        readOnly={readOnly}
         onChange={(event) => onChange(event.target.value)}
         placeholder="On call phone number for this week"
-        className={`${inputClass} mt-1`}
+        className={`${inputClass} mt-1 ${readOnly ? 'cursor-default opacity-80' : ''}`}
       />
     </label>
   )

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
+import { useAccess } from '../store/useAccess'
 import {
   filterCoachesByRegion,
   filterParticipantsByRegion,
@@ -28,6 +29,7 @@ export function ParticipantScheduleModal({
   onClose,
 }: ParticipantScheduleModalProps) {
   const { state } = useStore()
+  const { canEdit } = useAccess()
 
   const regionParticipants = useMemo(
     () => filterParticipantsByRegion(state.participants, state.selectedRegionId),
@@ -136,7 +138,7 @@ export function ParticipantScheduleModal({
               </select>
             </label>
 
-            <OnCallPhoneField value={onCallPhone} onChange={setOnCallPhone} />
+            <OnCallPhoneField value={onCallPhone} onChange={setOnCallPhone} readOnly={!canEdit} />
 
             <div>
               <span className="text-xs font-medium text-slate-400">Schedule write-up</span>

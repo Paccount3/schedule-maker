@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
+import { useAccess } from '../store/useAccess'
 import {
   isCoachingOnlyAuthorization,
   resolveSelectedAuthorization,
@@ -83,6 +84,7 @@ function CoachRow({
   onToggleShiftsVisibility: () => void
 }) {
   const { state } = useStore()
+  const { canEdit } = useAccess()
   const [expanded, setExpanded] = useState(false)
   const summary = getCoachHoursSummary(coach, weekDates, state.shifts)
   const issueMessages = getCoachSidebarIssueMessages(
@@ -151,6 +153,7 @@ function CoachRow({
           >
             <ShiftIcon visible={availabilityVisible} />
           </button>
+          {canEdit && (
           <button
             onClick={onEdit}
             title="Edit coach"
@@ -158,6 +161,7 @@ function CoachRow({
           >
             ✎
           </button>
+          )}
           <div className="flex h-7 items-center pl-0.5">
             <CoachHoursLabel assigned={summary.assigned} max={summary.max} />
           </div>
@@ -210,6 +214,7 @@ function ParticipantRow({
   onToggleVisibility: () => void
 }) {
   const { state } = useStore()
+  const { canEdit } = useAccess()
   const [expanded, setExpanded] = useState(false)
   const authorization = resolveSelectedAuthorization(participant, selectedAuthorizationId)
   const weekHours = authorization
@@ -398,6 +403,7 @@ function ParticipantRow({
         >
           <EyeIcon visible={visible} />
         </button>
+        {canEdit && (
         <button
           onClick={onEdit}
           title="Edit participant"
@@ -407,6 +413,7 @@ function ParticipantRow({
         >
           ✎
         </button>
+        )}
       </div>
     </div>
   )
@@ -432,6 +439,7 @@ function OtherCoachingRow({
   onEdit: (e: React.MouseEvent) => void
 }) {
   const { state } = useStore()
+  const { canEdit } = useAccess()
   const weekHours = getOtherCoachingHoursForWeek(activity.id, weekDates, state.shifts)
   const weekShifts = state.shifts.filter(
     (s) =>
@@ -476,6 +484,7 @@ function OtherCoachingRow({
         >
           <EyeIcon visible={visible} />
         </button>
+        {canEdit && (
         <button
           onClick={onEdit}
           title="Edit other coaching assignment"
@@ -485,6 +494,7 @@ function OtherCoachingRow({
         >
           ✎
         </button>
+        )}
       </div>
     </div>
   )
@@ -508,6 +518,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { state, addCoach, addParticipant, addOtherCoachingActivity, setSelectedRegionId, addRegion } =
     useStore()
+  const { canEdit } = useAccess()
   const [editingCoach, setEditingCoach] = useState<Coach | null>(null)
   const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null)
   const [editingOtherCoaching, setEditingOtherCoaching] = useState<OtherCoachingActivity | null>(
@@ -565,6 +576,7 @@ export function Sidebar({
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Region
             </h2>
+            {canEdit && (
             <button
               type="button"
               onClick={() => setAddingRegion((v) => !v)}
@@ -572,6 +584,7 @@ export function Sidebar({
             >
               + Add
             </button>
+            )}
           </div>
           <select
             value={state.selectedRegionId}
@@ -584,7 +597,7 @@ export function Sidebar({
               </option>
             ))}
           </select>
-          {addingRegion && (
+          {canEdit && addingRegion && (
             <div className="mt-2 flex gap-1">
               <input
                 type="text"
@@ -612,12 +625,14 @@ export function Sidebar({
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Coaches
             </h2>
+            {canEdit && (
             <button
               onClick={() => setEditingCoach(addCoach())}
               className="rounded px-1.5 py-0.5 text-xs font-medium text-blue-400 hover:bg-slate-800"
             >
               + Add
             </button>
+            )}
           </div>
           <div className="space-y-0.5">
             {regionCoaches.length === 0 ? (
@@ -647,6 +662,7 @@ export function Sidebar({
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Other Coaching Assignments
             </h2>
+            {canEdit && (
             <button
               onClick={() => {
                 const activity = addOtherCoachingActivity()
@@ -659,6 +675,7 @@ export function Sidebar({
             >
               + Add
             </button>
+            )}
           </div>
           <div className="max-h-40 space-y-0.5 overflow-y-auto">
             {regionOtherCoaching.length === 0 ? (
@@ -695,6 +712,7 @@ export function Sidebar({
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Participants
             </h2>
+            {canEdit && (
             <button
               onClick={() => {
                 const p = addParticipant()
@@ -707,6 +725,7 @@ export function Sidebar({
             >
               + Add
             </button>
+            )}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-0.5">

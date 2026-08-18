@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store/useStore'
+import { useAccess } from '../store/useAccess'
 import {
   filterCoachesByRegion,
   filterOtherCoachingByRegion,
@@ -25,6 +26,7 @@ interface CoachScheduleModalProps {
 
 export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachScheduleModalProps) {
   const { state } = useStore()
+  const { canEdit } = useAccess()
 
   const regionCoaches = useMemo(
     () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
@@ -146,7 +148,7 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
               </select>
             </label>
 
-            <OnCallPhoneField value={onCallPhone} onChange={setOnCallPhone} />
+            <OnCallPhoneField value={onCallPhone} onChange={setOnCallPhone} readOnly={!canEdit} />
 
             <div>
               <span className="text-xs font-medium text-slate-400">Schedule write-up</span>

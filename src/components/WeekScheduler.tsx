@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { Coach, Shift } from '../types'
 import { useStore } from '../store/useStore'
+import { useAccess } from '../store/useAccess'
 import { useConfirm } from '../store/useConfirm'
 import { shiftDeleteConfirm } from '../lib/confirmMessages'
 import { hexToRgba } from '../lib/colors'
@@ -133,6 +134,7 @@ export function WeekScheduler({
     copyShiftsFromPreviousWeek,
   } = useStore()
   const { confirm } = useConfirm()
+  const { canEdit } = useAccess()
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
   const [isNewShift, setIsNewShift] = useState(false)
   const [dragPreview, setDragPreview] = useState<ShiftDragPreview | null>(null)
@@ -286,6 +288,7 @@ export function WeekScheduler({
 
   const handleDayColumnContextMenu = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, date: string) => {
+      if (!canEdit) return
       const data = copiedShiftRef.current
       if (!data) return
 
@@ -304,11 +307,11 @@ export function WeekScheduler({
         },
       ])
     },
-    [addShift, hourHeight, openContextMenu],
+    [addShift, canEdit, hourHeight, openContextMenu],
   )
 
   const handleCellClick = (date: string, hourMinutes: number) => {
-    if (isDragging) return
+    if (!canEdit || isDragging) return
 
     const startMinutes = hourMinutes
     const endMinutes = otherCoachingActivity
@@ -382,8 +385,9 @@ export function WeekScheduler({
 
   const gridBodyHeight = hours.length * hourHeight
   const canAddShifts =
-    (!!participant && !!selectedAuthorization && isAuthorizationSchedulable(selectedAuthorization)) ||
-    !!otherCoachingActivity?.coachId
+    canEdit &&
+    ((!!participant && !!selectedAuthorization && isAuthorizationSchedulable(selectedAuthorization)) ||
+      !!otherCoachingActivity?.coachId)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -391,7 +395,27 @@ export function WeekScheduler({
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-slate-100">Week schedule</h2>
           <p className="text-xs text-slate-500">
-            {otherCoachingActivity ? (
+            {!canEdit ? (
+              otherCoachingActivity ? (
+                <>
+                  Viewing{' '}
+                  <span className="font-medium text-teal-400">{otherCoachingActivity.name}</span>
+                  {otherCoachingActivity.coachId
+                    ? ` · ${coachMap.get(otherCoachingActivity.coachId)?.name || 'Coach'}`
+                    : ''}
+                </>
+              ) : participant && selectedAuthorization ? (
+                <>
+                  Viewing{' '}
+                  <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
+                  {' · '}
+                  <span className="font-medium text-blue-300">{selectedAuthorization.service}</span>
+                  {participant.site ? ` · ${participant.site}` : ''}
+                </>
+              ) : (
+                'View only — you can review the schedule but cannot make changes.'
+              )
+            ) : otherCoachingActivity ? (
               <>
                 Adding shifts for{' '}
                 <span className="font-medium text-teal-400">{otherCoachingActivity.name}</span>
@@ -455,6 +479,7 @@ export function WeekScheduler({
         </div>
 
         <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-self-end">
+          {canEdit && (
           <button
             onClick={() => {
               const copied = copyShiftsFromPreviousWeek()
@@ -465,6 +490,7 @@ export function WeekScheduler({
           >
             Copy Shifts from Last Week
           </button>
+          )}
           <button
             onClick={() => {
               playSound('weekNav')
@@ -526,7 +552,9 @@ export function WeekScheduler({
         <span>
           {canAddShifts
             ? 'Click an empty slot to add a shift · drag top/bottom to resize · drag center to move · right-click to copy/paste'
-            : 'Select a participant or other coaching assignment to add shifts · drag to move/resize · right-click shifts to copy and paste on calendar'}
+            : canEdit
+              ? 'Select a participant or other coaching assignment to add shifts · drag to move/resize · right-click shifts to copy and paste on calendar'
+              : 'View only — drag, add, and delete are turned off'}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-amber-950/75" />
@@ -719,22 +747,35 @@ export function WeekScheduler({
                         authorizationHoursLines={authorizationHoursLines}
                         fullyScheduledLabel={fullyScheduledLabel}
                         errorSummary={errorSummary}
+                        readOnly={!canEdit}
                         onEdit={() => {
+                          if (!canEdit) return
                           playSound('open')
                           setIsNewShift(false)
                           setEditingShift(original)
                         }}
                         onDragStart={() => {
+                          if (!canEdit) return
                           playSound('pickup')
                           setIsDragging(true)
                         }}
-                        onDragPreview={setDragPreview}
-                        onDragEnd={(preview) => handleDragEnd(original, preview)}
+                        onDragPreview={(preview) => {
+                          if (!canEdit) return
+                          setDragPreview(preview)
+                        }}
+                        onDragEnd={(preview) => {
+                          if (!canEdit) return
+                          handleDragEnd(original, preview)
+                        }}
                         onDragCancel={() => {
                           setDragPreview(null)
                           setIsDragging(false)
                         }}
                         onContextMenu={(e) => {
+                          if (!canEdit) {
+                            e.preventDefault()
+                            return
+                          }
                           if (isOtherCoaching) {
                             openContextMenu(e, [
                               {

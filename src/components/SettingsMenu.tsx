@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettings } from '../store/useSettings'
+import { useAccess } from '../store/useAccess'
 
 export function SettingsMenu() {
   const { settings, setSoundsFxEnabled, setSoundVolume } = useSettings()
+  const { canEdit, signOut } = useAccess()
   const volumePercent = Math.round(settings.soundVolume * 100)
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -66,6 +68,16 @@ export function SettingsMenu() {
             />
           </div>
           <div className="mt-1 border-t border-slate-800 px-3 pt-2">
+            {!canEdit && (
+              <p className="mb-2 text-xs text-amber-400">View only — changes are disabled</p>
+            )}
+            <button
+              type="button"
+              onClick={signOut}
+              className="mb-2 text-xs text-slate-400 hover:text-slate-200"
+            >
+              Sign out
+            </button>
             <p className="text-xs text-slate-500">Created by Shawn Hillmann</p>
           </div>
         </div>

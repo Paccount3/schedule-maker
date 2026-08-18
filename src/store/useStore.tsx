@@ -30,6 +30,7 @@ import {
   saveUiPrefs,
 } from '../lib/supabaseSync'
 import { addDays, durationHours, endMinutesFromStartingHours, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
+import { useAccess } from './useAccess'
 
 interface StoreContextValue {
   state: AppState
@@ -86,6 +87,7 @@ function emptyState(): AppState {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { canEdit } = useAccess()
   const [state, setState] = useState<AppState>(emptyState)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -111,6 +113,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const persist = (label: string, task: () => Promise<void>) => {
+    if (!canEdit) return
     void task().then(
       () => setPersistError(null),
       (error: unknown) => {
@@ -133,6 +136,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ...s, selectedRegionId: regionId }
       }),
     addRegion: (name) => {
+      if (!canEdit) return null
       const trimmed = name.trim()
       if (!trimmed) return null
       const existingIds = new Set(state.regions.map((r) => r.id))
@@ -169,12 +173,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ...s, weekStart }
       }),
     addParticipant: () => {
+      if (!canEdit) return createEmptyParticipant(state.selectedRegionId)
       const p = createEmptyParticipant(state.selectedRegionId)
       update((s) => ({ ...s, participants: [...s.participants, p] }))
       persist('addParticipant', () => persistParticipant(p))
       return p
     },
     updateParticipant: (p) => {
+      if (!canEdit) return
       update((s) => ({
         ...s,
         participants: s.participants.map((x) => (x.id === p.id ? p : x)),
@@ -182,6 +188,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       persist('updateParticipant', () => persistParticipant(p))
     },
     removeParticipant: (id) => {
+      if (!canEdit) return
       update((s) => ({
         ...s,
         participants: s.participants.filter((x) => x.id !== id),
@@ -190,6 +197,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       persist('removeParticipant', () => deleteParticipant(id))
     },
     addCoach: () => {
+      if (!canEdit) return createEmptyCoach(0, state.selectedRegionId)
       const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
       const c = createEmptyCoach(regionCoaches.length, state.selectedRegionId)
       update((s) => ({ ...s, coaches: [...s.coaches, c] }))
@@ -197,6 +205,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return c
     },
     updateCoach: (c) => {
+      if (!canEdit) return
       update((s) => ({
         ...s,
         coaches: s.coaches.map((x) => (x.id === c.id ? c : x)),
@@ -204,6 +213,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       persist('updateCoach', () => persistCoach(c))
     },
     removeCoach: (id) => {
+      if (!canEdit) return
       const deletedShiftIds = state.shifts
         .filter((sh) => sh.type === 'other-coaching' && sh.coachId === id)
         .map((sh) => sh.id)
@@ -222,6 +232,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       persist('removeCoach', () => deleteCoach(id, convertedShifts, deletedShiftIds))
     },
     addOtherCoachingActivity: () => {
+      if (!canEdit) {
+        return createEmptyOtherCoachingActivity(state.selectedRegionId)
+      }
       const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
       const activity = createEmptyOtherCoachingActivity(
         state.selectedRegionId,
@@ -235,6 +248,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return activity
     },
     updateOtherCoachingActivity: (activity) => {
+      if (!canEdit) return
       const normalized = { ...activity, shiftsPerWeek: 1 }
       let relatedShifts: Shift[] = []
       update((s) => {
@@ -269,6 +283,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
     },
     removeOtherCoachingActivity: (id) => {
+      if (!canEdit) return
       update((s) => ({
         ...s,
         otherCoachingActivities: s.otherCoachingActivities.filter((x) => x.id !== id),
@@ -278,12 +293,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     addShift: (shiftData, sound) => {
       const shift: Shift = { ...shiftData, id: crypto.randomUUID() }
+      if (!canEdit) return shift
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
       persist('addShift', () => persistShifts([shift]))
       playSoundOption(sound, 'place')
       return shift
     },
     addShifts: (shiftsData, sound) => {
+      if (!canEdit) return
       const newShifts: Shift[] = shiftsData.map((d) => ({
         ...d,
         id: crypto.randomUUID(),
@@ -293,6 +310,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       playSoundOption(sound, newShifts.length > 1 ? 'bulk' : 'place')
     },
     updateShift: (shift, sound) => {
+      if (!canEdit) return
       let relatedShifts: Shift[] = [shift]
       let relatedActivity: OtherCoachingActivity | undefined
       update((s) => {
@@ -334,12 +352,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       playSoundOption(sound, 'drop')
     },
     removeShift: (id, sound) => {
+      if (!canEdit) return
       update((s) => ({ ...s, shifts: s.shifts.filter((x) => x.id !== id) }))
       persist('removeShift', () => deleteShift(id))
       playSoundOption(sound, 'delete')
     },
     createQuickShift: (participantId, authorizationId, date, startMinutes, endMinutes, type = 'solo') => {
       const shift = createShift(participantId, authorizationId, date, startMinutes, endMinutes, type)
+      if (!canEdit) return shift
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
       persist('createQuickShift', () => persistShifts([shift]))
       playSound('place')
@@ -353,12 +373,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         startMinutes,
         endMinutes,
       )
+      if (!canEdit) return shift
       update((s) => ({ ...s, shifts: [...s.shifts, shift] }))
       persist('createQuickOtherCoachingShift', () => persistShifts([shift]))
       playSound('place')
       return shift
     },
     copyShiftsFromPreviousWeek: () => {
+      if (!canEdit) return 0
       const regionParticipants = filterParticipantsByRegion(
         state.participants,
         state.selectedRegionId,

@@ -51,6 +51,7 @@ interface ShiftBlockProps {
   onDragEnd: (preview: ShiftDragPreview) => void
   onDragCancel: () => void
   onContextMenu?: (e: React.MouseEvent) => void
+  readOnly?: boolean
 }
 
 export function ShiftBlock({
@@ -82,6 +83,7 @@ export function ShiftBlock({
   onDragEnd,
   onDragCancel,
   onContextMenu,
+  readOnly = false,
 }: ShiftBlockProps) {
   const pointerRef = useRef<{
     mode: ShiftDragMode
@@ -146,7 +148,7 @@ export function ShiftBlock({
   }
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return
+    if (readOnly || e.button !== 0) return
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
 
@@ -207,13 +209,16 @@ export function ShiftBlock({
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
+        if (readOnly) return
         onContextMenu?.(e)
       }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={(e) => finishPointer(e, true)}
-      onPointerCancel={(e) => finishPointer(e, false)}
-      className={`absolute touch-none select-none overflow-hidden rounded border text-left leading-snug shadow-sm ${
+      onPointerDown={readOnly ? undefined : handlePointerDown}
+      onPointerMove={readOnly ? undefined : handlePointerMove}
+      onPointerUp={readOnly ? undefined : (e) => finishPointer(e, true)}
+      onPointerCancel={readOnly ? undefined : (e) => finishPointer(e, false)}
+      className={`absolute select-none overflow-hidden rounded border text-left leading-snug shadow-sm ${
+        readOnly ? '' : 'touch-none'
+      } ${
         errorLevel === 'none' ? '' : ''
       } ${errorClass} ${isSelected ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-slate-900' : ''} ${
         isDragging ? 'z-30 opacity-90 shadow-lg' : errorLevel === 'critical' ? '' : 'z-10 hover:z-20'
@@ -231,9 +236,13 @@ export function ShiftBlock({
           : undefined),
       }}
     >
-      <div className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize" aria-hidden />
-      <div className="absolute inset-x-0 bottom-0 z-10 h-2 cursor-ns-resize" aria-hidden />
-      <div className="absolute inset-x-0 top-2 bottom-2 z-10 cursor-grab active:cursor-grabbing" aria-hidden />
+      {!readOnly && (
+        <>
+          <div className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize" aria-hidden />
+          <div className="absolute inset-x-0 bottom-0 z-10 h-2 cursor-ns-resize" aria-hidden />
+          <div className="absolute inset-x-0 top-2 bottom-2 z-10 cursor-grab active:cursor-grabbing" aria-hidden />
+        </>
+      )}
       <div className="pointer-events-none relative z-0 px-1.5 py-1">
         <div className="truncate font-semibold">{participantName}</div>
         <div className="truncate opacity-90">
