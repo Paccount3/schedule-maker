@@ -9,11 +9,22 @@ import { useStore } from '../store/useStore'
 import { useConfirm } from '../store/useConfirm'
 import { otherCoachingDeleteConfirm } from '../lib/confirmMessages'
 import { filterCoachesByRegion } from '../lib/regions'
+import { parseDateInput, startOfWeek, toDateInput } from '../lib/time'
 import { Modal } from './Modal'
 import { CalendarScheduleHint } from './CalendarScheduleHint'
+import { DateSelect } from './DateSelect'
 
 const inputClass =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
+
+function snapToWeekStart(date: string): string {
+  return toDateInput(startOfWeek(parseDateInput(date)))
+}
+
+function formatWeekLabel(weekStart: string): string {
+  const d = parseDateInput(weekStart)
+  return `Week of ${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`
+}
 
 interface OtherCoachingModalProps {
   activity: OtherCoachingActivity
@@ -29,7 +40,13 @@ export function OtherCoachingModal({ activity: initial, isNew, onClose }: OtherC
 
   const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
 
+  const [weekError, setWeekError] = useState<string | undefined>()
+
   const save = () => {
+    if (!activity.weekOf) {
+      setWeekError('Select a week')
+      return
+    }
     if (!activity.coachId) {
       setCoachError('Assign a coach')
       return
@@ -103,6 +120,23 @@ export function OtherCoachingModal({ activity: initial, isNew, onClose }: OtherC
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs font-medium text-slate-400">Week</span>
+          <div className="mt-1">
+            <DateSelect
+              value={activity.weekOf}
+              onChange={(v) => { setWeekError(undefined); setActivity({ ...activity, weekOf: snapToWeekStart(v) }) }}
+            />
+            {activity.weekOf ? (
+              <span className="mt-1 block text-[11px] text-slate-500">
+                {formatWeekLabel(activity.weekOf)} — only visible this week
+              </span>
+            ) : weekError ? (
+              <span className="mt-1 block text-xs text-red-400">{weekError}</span>
+            ) : null}
+          </div>
         </label>
 
         <label className="block">

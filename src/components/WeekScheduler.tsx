@@ -178,10 +178,9 @@ export function WeekScheduler({
       filterOtherCoachingForWeekView(
         state.otherCoachingActivities,
         state.selectedRegionId,
-        state.shifts,
         state.weekStart,
       ),
-    [state.otherCoachingActivities, state.selectedRegionId, state.shifts, state.weekStart],
+    [state.otherCoachingActivities, state.selectedRegionId, state.weekStart],
   )
   const regionShifts = useMemo(
     () =>
@@ -198,7 +197,11 @@ export function WeekScheduler({
   const selectedAuthorization = participant
     ? resolveSelectedAuthorization(participant, selectedAuthorizationId)
     : undefined
-  const otherCoachingActivity = regionOtherCoaching.find((a) => a.id === selectedOtherCoachingId)
+  const allRegionOtherCoaching = useMemo(
+    () => state.otherCoachingActivities.filter((a) => a.regionId === state.selectedRegionId),
+    [state.otherCoachingActivities, state.selectedRegionId],
+  )
+  const otherCoachingActivity = allRegionOtherCoaching.find((a) => a.id === selectedOtherCoachingId)
   const participantMap = useMemo(
     () =>
       new Map(

@@ -91,11 +91,12 @@ export function isOtherCoachingRelevantForWeek(
   shifts: Shift[],
   weekDates: string[],
 ): boolean {
-  const activityShifts = shifts.filter(
-    (s) => s.type === 'other-coaching' && s.otherCoachingActivityId === activityId,
+  return shifts.some(
+    (s) =>
+      s.type === 'other-coaching' &&
+      s.otherCoachingActivityId === activityId &&
+      weekDates.includes(s.date),
   )
-  if (activityShifts.length === 0) return true
-  return activityShifts.some((s) => weekDates.includes(s.date))
 }
 
 export function participantHasShiftOnDate(

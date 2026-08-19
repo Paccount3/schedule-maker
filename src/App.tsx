@@ -164,10 +164,9 @@ export default function App() {
       filterOtherCoachingForWeekView(
         state.otherCoachingActivities,
         state.selectedRegionId,
-        state.shifts,
         state.weekStart,
       ),
-    [state.otherCoachingActivities, state.selectedRegionId, state.shifts, state.weekStart],
+    [state.otherCoachingActivities, state.selectedRegionId, state.weekStart],
   )
 
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>(

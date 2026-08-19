@@ -92,6 +92,7 @@ create table if not exists public.other_coaching_activities (
   notes text not null default '',
   hours_per_week numeric not null default 2,
   shifts_per_week integer not null default 1,
+  week_of date,
   constraint other_coaching_name_check check (
     name in (
       'Office Time',

@@ -105,6 +105,7 @@ type OtherCoachingRow = {
   notes: string
   hours_per_week: number | string
   shifts_per_week: number
+  week_of: string | null
 }
 
 type ShiftRow = {
@@ -202,6 +203,7 @@ function otherCoachingToRow(activity: OtherCoachingActivity): OtherCoachingRow {
     notes: activity.notes,
     hours_per_week: activity.hoursPerWeek,
     shifts_per_week: activity.shiftsPerWeek,
+    week_of: activity.weekOf || null,
   }
 }
 
@@ -318,6 +320,7 @@ export async function loadAppStateFromSupabase(): Promise<AppState> {
       notes: row.notes,
       hoursPerWeek: asNumber(row.hours_per_week),
       shiftsPerWeek: row.shifts_per_week,
+      weekOf: row.week_of ? asDateString(row.week_of) : '',
     }),
   )
 

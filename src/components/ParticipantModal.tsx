@@ -9,7 +9,7 @@ import { useConfirm } from '../store/useConfirm'
 import { participantDeleteConfirm } from '../lib/confirmMessages'
 import { resolveSelectedAuthorization } from '../lib/authorizations'
 import { hexToRgba } from '../lib/colors'
-import { filterCoachesByRegion } from '../lib/regions'
+import { filterCoachesForWeekView } from '../lib/regions'
 import {
   PARTICIPANT_NOTES_LABEL,
   validateParticipant,
@@ -108,7 +108,7 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
   )
   const [selectedCoachId, setSelectedCoachId] = useState<string>(() => {
     if (isNew) return NO_COACH_ID
-    const coaches = filterCoachesByRegion(state.coaches, initial.regionId)
+    const coaches = filterCoachesForWeekView(state.coaches, initial.regionId, state.weekStart)
     return coaches[0]?.id ?? NO_COACH_ID
   })
   const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set())
@@ -139,8 +139,8 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
   const regionCoaches = useMemo(
-    () => filterCoachesByRegion(state.coaches, participant.regionId),
-    [state.coaches, participant.regionId],
+    () => filterCoachesForWeekView(state.coaches, participant.regionId, state.weekStart),
+    [state.coaches, participant.regionId, state.weekStart],
   )
 
   const coachSchedulingEnabled = selectedCoachId !== NO_COACH_ID

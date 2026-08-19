@@ -570,10 +570,9 @@ export function Sidebar({
       filterOtherCoachingForWeekView(
         state.otherCoachingActivities,
         state.selectedRegionId,
-        state.shifts,
         state.weekStart,
       ),
-    [state.otherCoachingActivities, state.selectedRegionId, state.shifts, state.weekStart],
+    [state.otherCoachingActivities, state.selectedRegionId, state.weekStart],
   )
   const coachNameById = useMemo(
     () => new Map(regionCoaches.map((c) => [c.id, c.name || 'Unnamed'])),

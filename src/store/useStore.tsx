@@ -233,12 +233,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     addOtherCoachingActivity: () => {
       if (!canEdit) {
-        return createEmptyOtherCoachingActivity(state.selectedRegionId)
+        return createEmptyOtherCoachingActivity(state.selectedRegionId, '', state.weekStart)
       }
       const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
       const activity = createEmptyOtherCoachingActivity(
         state.selectedRegionId,
         regionCoaches[0]?.id ?? '',
+        state.weekStart,
       )
       update((s) => ({
         ...s,

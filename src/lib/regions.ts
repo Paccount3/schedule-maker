@@ -1,6 +1,6 @@
 import type { Coach, OtherCoachingActivity, Participant, Region, Shift } from '../types'
 import { DEFAULT_REGIONS } from '../types'
-import { isOtherCoachingRelevantForWeek, isParticipantRelevantForWeek } from './scheduling'
+import { isParticipantRelevantForWeek } from './scheduling'
 import { getWeekDates } from './time'
 
 export function regionIdFromName(name: string, existingIds: Set<string>): string {
@@ -49,16 +49,14 @@ export function filterOtherCoachingByRegion(
   return activities.filter((a) => a.regionId === regionId)
 }
 
-/** Region assignments visible for the viewed week (scheduled this week or not yet on calendar) */
+/** Other coaching activities belonging to the viewed week (matched by weekOf date) */
 export function filterOtherCoachingForWeekView(
   activities: OtherCoachingActivity[],
   regionId: string,
-  shifts: Shift[],
   weekStart: string,
 ): OtherCoachingActivity[] {
-  const weekDates = getWeekDates(weekStart)
-  return filterOtherCoachingByRegion(activities, regionId).filter((a) =>
-    isOtherCoachingRelevantForWeek(a.id, shifts, weekDates),
+  return filterOtherCoachingByRegion(activities, regionId).filter(
+    (a) => !a.weekOf || a.weekOf === weekStart,
   )
 }
 

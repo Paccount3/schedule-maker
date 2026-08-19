@@ -263,6 +263,7 @@ export function createEmptyCoach(colorIndex = 0, regionId: string): Coach {
 export function createEmptyOtherCoachingActivity(
   regionId: string,
   coachId = '',
+  weekOf = '',
 ): OtherCoachingActivity {
   return {
     id: generateId(),
@@ -272,6 +273,7 @@ export function createEmptyOtherCoachingActivity(
     hoursPerWeek: defaultStartingHoursForCategory('Office Time'),
     shiftsPerWeek: 1,
     coachId,
+    weekOf,
   }
 }
 

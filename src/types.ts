@@ -148,6 +148,8 @@ export interface OtherCoachingActivity {
   hoursPerWeek: number
   shiftsPerWeek: number
   coachId: string
+  /** ISO date of the Monday of the week this assignment belongs to */
+  weekOf: string
 }
 
 export interface Coach {
