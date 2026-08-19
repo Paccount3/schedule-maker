@@ -86,6 +86,7 @@ type CoachRow = {
   phone: string
   notes: string
   color: string
+  inactive_date: string | null
 }
 
 type AvailabilityRow = {
@@ -172,6 +173,7 @@ function coachToRow(c: Coach): CoachRow {
     phone: c.phone,
     notes: c.notes,
     color: c.color,
+    inactive_date: c.inactiveDate ?? null,
   }
 }
 
@@ -303,6 +305,7 @@ export async function loadAppStateFromSupabase(): Promise<AppState> {
       notes: row.notes,
       color: row.color,
       availability: availabilityByCoach.get(row.id) ?? {},
+      inactiveDate: row.inactive_date ?? undefined,
     }),
   )
 

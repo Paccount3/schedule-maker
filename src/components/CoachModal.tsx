@@ -5,9 +5,10 @@ import { useStore } from '../store/useStore'
 import { useConfirm } from '../store/useConfirm'
 import { coachDeleteConfirm } from '../lib/confirmMessages'
 import { COACH_COLOR_PALETTE } from '../lib/colors'
-import { CALENDAR_VIEW_END, CALENDAR_VIEW_START, SLOT_MINUTES } from '../lib/time'
+import { CALENDAR_VIEW_END, CALENDAR_VIEW_START, SLOT_MINUTES, todayDateInput } from '../lib/time'
 import { TimeSelect } from './TimeSelect'
 import { Modal } from './Modal'
+import { DateSelect } from './DateSelect'
 
 const inputClass =
   'w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
@@ -232,6 +233,48 @@ export function CoachModal({ coach: initialCoach, onClose }: CoachModalProps) {
             >
               {coach.color}
             </span>
+          </div>
+        </div>
+
+        <div>
+          <span className="text-xs font-medium text-slate-400">Status</span>
+          <div className="mt-2">
+            {coach.inactiveDate ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1">
+                  <DateSelect
+                    value={coach.inactiveDate}
+                    onChange={(v) => setCoach({ ...coach, inactiveDate: v })}
+                    className="flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCoach({ ...coach, inactiveDate: undefined })}
+                    className="shrink-0 rounded px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-800 hover:text-red-400"
+                    title="Mark as active again"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Coach will be hidden from weeks after this date.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="flex w-full items-center gap-2 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+                  <span className="flex-1 text-sm text-emerald-400">Active</span>
+                  <button
+                    type="button"
+                    onClick={() => setCoach({ ...coach, inactiveDate: todayDateInput() })}
+                    className="text-xs text-slate-500 hover:text-red-400"
+                  >
+                    No longer active
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

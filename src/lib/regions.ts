@@ -66,6 +66,22 @@ export function filterCoachesByRegion(coaches: Coach[], regionId: string): Coach
   return coaches.filter((c) => c.regionId === regionId)
 }
 
+/**
+ * Coaches in a region that are active during the given week.
+ * A coach with no inactiveDate is always shown. Once inactiveDate is set,
+ * the coach is hidden for any week that starts after that date.
+ */
+export function filterCoachesForWeekView(
+  coaches: Coach[],
+  regionId: string,
+  weekStart: string,
+): Coach[] {
+  return filterCoachesByRegion(coaches, regionId).filter((c) => {
+    if (!c.inactiveDate) return true
+    return weekStart <= c.inactiveDate
+  })
+}
+
 export function filterShiftsByRegion(
   shifts: Shift[],
   participants: Participant[],

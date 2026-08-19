@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from './store/useStore'
-import { filterCoachesByRegion, filterOtherCoachingByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from './lib/regions'
+import { filterCoachesForWeekView, filterOtherCoachingByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from './lib/regions'
 import { resolveSelectedAuthorization } from './lib/authorizations'
 import { collectSchedulingIssueKeys, isAuthorizationFullyScheduled } from './lib/scheduling'
 import { playSound, playWarningSound } from './lib/sounds'
@@ -43,8 +43,8 @@ export default function App() {
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
   const regionCoachesForIssues = useMemo(
-    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
-    [state.coaches, state.selectedRegionId],
+    () => filterCoachesForWeekView(state.coaches, state.selectedRegionId, state.weekStart),
+    [state.coaches, state.selectedRegionId, state.weekStart],
   )
   const regionShiftsForIssues = useMemo(
     () =>
@@ -156,8 +156,8 @@ export default function App() {
     [state.participants, state.selectedRegionId, state.shifts, state.weekStart],
   )
   const regionCoaches = useMemo(
-    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
-    [state.coaches, state.selectedRegionId],
+    () => filterCoachesForWeekView(state.coaches, state.selectedRegionId, state.weekStart),
+    [state.coaches, state.selectedRegionId, state.weekStart],
   )
   const regionOtherCoaching = useMemo(
     () =>

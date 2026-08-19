@@ -159,6 +159,7 @@ export interface Coach {
   notes: string
   color: string
   availability: Partial<Record<DayOfWeek, TimeRange | null>>
+  inactiveDate?: string
 }
 
 export type ShiftType = 'solo' | 'coached' | 'other-coaching'

@@ -20,7 +20,7 @@ import {
   participantWeekViewVisibilityRules,
 } from '../lib/scheduling'
 import { formatAuthRange, getWeekDates } from '../lib/time'
-import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsForWeekView } from '../lib/regions'
+import { filterCoachesForWeekView, filterOtherCoachingForWeekView, filterParticipantsForWeekView } from '../lib/regions'
 import type { Coach, OtherCoachingActivity, Participant } from '../types'
 import { CoachModal } from './CoachModal'
 import { ChevronIcon } from './ChevronIcon'
@@ -552,8 +552,8 @@ export function Sidebar({
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
   const regionCoaches = useMemo(
-    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
-    [state.coaches, state.selectedRegionId],
+    () => filterCoachesForWeekView(state.coaches, state.selectedRegionId, state.weekStart),
+    [state.coaches, state.selectedRegionId, state.weekStart],
   )
   const regionParticipants = useMemo(
     () =>

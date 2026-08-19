@@ -256,6 +256,7 @@ export function createEmptyCoach(colorIndex = 0, regionId: string): Coach {
     notes: '',
     color: pickCoachColor(colorIndex),
     availability: defaultAvailability(),
+    inactiveDate: undefined,
   }
 }
 

@@ -59,6 +59,7 @@ create table if not exists public.coaches (
   phone text not null default '',
   notes text not null default '',
   color text not null default '#3b82f6',
+  inactive_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -19,7 +19,7 @@ import {
   isAuthorizationFullyScheduled,
   splitShiftForPartialCoverage,
 } from '../lib/scheduling'
-import { filterCoachesByRegion, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from '../lib/regions'
+import { filterCoachesForWeekView, filterOtherCoachingForWeekView, filterParticipantsByRegion, filterParticipantsForWeekView, filterShiftsByRegion } from '../lib/regions'
 import { layoutDayShifts } from '../lib/shiftLayout'
 import type { ShiftDragPreview } from '../lib/shiftDrag'
 import {
@@ -170,8 +170,8 @@ export function WeekScheduler({
     [state.participants, state.selectedRegionId, state.shifts, state.weekStart],
   )
   const regionCoaches = useMemo(
-    () => filterCoachesByRegion(state.coaches, state.selectedRegionId),
-    [state.coaches, state.selectedRegionId],
+    () => filterCoachesForWeekView(state.coaches, state.selectedRegionId, state.weekStart),
+    [state.coaches, state.selectedRegionId, state.weekStart],
   )
   const regionOtherCoaching = useMemo(
     () =>
