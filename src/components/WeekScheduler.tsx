@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import type { Coach, Shift } from '../types'
 import { useStore } from '../store/useStore'
 import { useAccess } from '../store/useAccess'
@@ -44,10 +44,15 @@ import { ShiftBlock } from './ShiftBlock'
 import { ReportModeModal, defaultReportRange } from './ReportModeModal'
 import { ParticipantScheduleModal } from './ParticipantScheduleModal'
 import { CoachScheduleModal } from './CoachScheduleModal'
+import { ShiftDetailsSheet, buildShiftDetails, type ShiftDetails } from './ShiftDetailsSheet'
 
 const MIN_HOUR_HEIGHT = 40
+const MOBILE_BASE_HOUR_HEIGHT = 48
+const MOBILE_DAY_MIN_WIDTH = 112
 const GRID_HEADER_HEIGHT = 40
 const HOUR_COUNT = (CALENDAR_VIEW_END - CALENDAR_VIEW_START) / 60
+const MOBILE_ZOOM_MIN = 0.65
+const MOBILE_ZOOM_MAX = 2.4
 
 interface WeekSchedulerProps {
   selectedParticipantId: string
@@ -57,6 +62,7 @@ interface WeekSchedulerProps {
   visibleCoachShiftIds: Set<string>
   visibleOtherCoachingIds: Set<string>
   visibleParticipantIds: Set<string>
+  mobileMode?: boolean
 }
 
 function hoursBetween(start: number, end: number): number[] {
@@ -119,6 +125,7 @@ export function WeekScheduler({
   visibleCoachShiftIds,
   visibleOtherCoachingIds,
   visibleParticipantIds,
+  mobileMode = false,
 }: WeekSchedulerProps) {
   const {
     state,
@@ -134,7 +141,8 @@ export function WeekScheduler({
     copyShiftsFromPreviousWeek,
   } = useStore()
   const { confirm } = useConfirm()
-  const { canEdit } = useAccess()
+  const { canEdit: roleCanEdit } = useAccess()
+  const canEdit = roleCanEdit && !mobileMode
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
   const [isNewShift, setIsNewShift] = useState(false)
   const [dragPreview, setDragPreview] = useState<ShiftDragPreview | null>(null)
@@ -143,6 +151,8 @@ export function WeekScheduler({
   const [reportOpen, setReportOpen] = useState(false)
   const [participantScheduleOpen, setParticipantScheduleOpen] = useState(false)
   const [coachScheduleOpen, setCoachScheduleOpen] = useState(false)
+  const [shiftDetails, setShiftDetails] = useState<ShiftDetails | null>(null)
+  const [mobileZoom, setMobileZoom] = useState(1)
   const copiedShiftRef = useRef<ReturnType<typeof shiftToClipboard> | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -150,6 +160,8 @@ export function WeekScheduler({
     items: ContextMenuItem[]
   } | null>(null)
   const gridContainerRef = useRef<HTMLDivElement>(null)
+  const pinchRef = useRef<{ startDistance: number; startZoom: number } | null>(null)
+  const mobileZoomRef = useRef(1)
   const [hourHeight, setHourHeight] = useState(52)
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
@@ -213,8 +225,8 @@ export function WeekScheduler({
     [state.participants, state.selectedRegionId],
   )
   const otherCoachingMap = useMemo(
-    () => new Map(regionOtherCoaching.map((a) => [a.id, a])),
-    [regionOtherCoaching],
+    () => new Map(allRegionOtherCoaching.map((a) => [a.id, a])),
+    [allRegionOtherCoaching],
   )
 
   const visibleCoaches = useMemo(
@@ -233,7 +245,7 @@ export function WeekScheduler({
             (!s.coachId || visibleCoachShiftIds.has(s.coachId))
           )
         }
-        if (s.type === 'solo' && !showSoloShifts) return false
+        if (s.type === 'solo' && !showSoloShifts && !mobileMode) return false
         return (
           !!s.participantId &&
           visibleParticipantIds.has(s.participantId) &&
@@ -247,6 +259,7 @@ export function WeekScheduler({
       visibleCoachShiftIds,
       visibleOtherCoachingIds,
       showSoloShifts,
+      mobileMode,
     ],
   )
 
@@ -266,6 +279,11 @@ export function WeekScheduler({
   )
 
   useLayoutEffect(() => {
+    if (mobileMode) {
+      setHourHeight(Math.max(MIN_HOUR_HEIGHT, Math.round(MOBILE_BASE_HOUR_HEIGHT * mobileZoom)))
+      return
+    }
+
     const el = gridContainerRef.current
     if (!el) return
 
@@ -278,7 +296,54 @@ export function WeekScheduler({
     const ro = new ResizeObserver(updateHeight)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [state.participants.length, participant?.id, state.selectedRegionId])
+  }, [mobileMode, mobileZoom, state.participants.length, participant?.id, state.selectedRegionId])
+
+  useEffect(() => {
+    mobileZoomRef.current = mobileZoom
+  }, [mobileZoom])
+
+  useEffect(() => {
+    if (!mobileMode) return
+    const el = gridContainerRef.current
+    if (!el) return
+
+    const distance = (a: Touch, b: Touch) =>
+      Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return
+      pinchRef.current = {
+        startDistance: distance(e.touches[0], e.touches[1]),
+        startZoom: mobileZoomRef.current,
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !pinchRef.current) return
+      e.preventDefault()
+      const ratio = distance(e.touches[0], e.touches[1]) / pinchRef.current.startDistance
+      const next = Math.min(
+        MOBILE_ZOOM_MAX,
+        Math.max(MOBILE_ZOOM_MIN, pinchRef.current.startZoom * ratio),
+      )
+      setMobileZoom(next)
+    }
+
+    const onTouchEnd = () => {
+      pinchRef.current = null
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+    }
+  }, [mobileMode])
 
   const openContextMenu = useCallback(
     (e: React.MouseEvent, items: ContextMenuItem[]) => {
@@ -403,7 +468,7 @@ export function WeekScheduler({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-4 grid shrink-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="mb-4 hidden shrink-0 grid-cols-1 items-start gap-4 md:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-slate-100">Week schedule</h2>
           <p className="text-xs text-slate-500">
@@ -555,7 +620,7 @@ export function WeekScheduler({
         </div>
       </div>
 
-      <div className="mb-3 flex shrink-0 flex-wrap gap-4 text-xs text-slate-500">
+      <div className="mb-3 hidden shrink-0 flex-wrap gap-4 text-xs text-slate-500 md:flex">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded border border-slate-500 bg-slate-500/35" />
           Solo shift (no coach)
@@ -596,10 +661,12 @@ export function WeekScheduler({
 
       <div
         ref={gridContainerRef}
-        className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-900 shadow-sm"
+        className={`min-h-0 flex-1 overflow-auto rounded-lg border border-slate-800 bg-slate-900 shadow-sm ${
+          mobileMode ? 'touch-pan-x touch-pan-y' : ''
+        }`}
       >
         <div className="inline-flex min-w-full">
-          <div className="sticky left-0 z-20 w-16 shrink-0 border-r border-slate-800 bg-slate-900">
+          <div className="sticky left-0 z-20 w-14 shrink-0 border-r border-slate-800 bg-slate-900 md:w-16">
             <div className="border-b border-slate-800" style={{ height: GRID_HEADER_HEIGHT }} />
             {hours.map((m) => (
               <div
@@ -618,12 +685,16 @@ export function WeekScheduler({
               .filter((s) => s.date === date)
             const dayLayouts = layoutDayShifts(dayShifts)
             const isToday = date === todayDateInput()
+            const dayMinWidth = mobileMode
+              ? Math.round(MOBILE_DAY_MIN_WIDTH * mobileZoom)
+              : 140
 
             return (
               <div
                 key={date}
                 data-day-column={date}
-                className="min-w-[140px] flex-1 border-r border-slate-800 last:border-r-0"
+                className="flex-1 border-r border-slate-800 last:border-r-0"
+                style={{ minWidth: dayMinWidth }}
               >
                 <div
                   className={`flex items-center justify-center border-b border-slate-800 text-xs font-medium ${
@@ -777,7 +848,26 @@ export function WeekScheduler({
                         errorSummary={errorSummary}
                         readOnly={!canEdit}
                         onEdit={() => {
-                          if (!canEdit) return
+                          if (mobileMode || !canEdit) {
+                            setShiftDetails(
+                              buildShiftDetails({
+                                shift: original,
+                                title: isOtherCoaching
+                                  ? activity?.name || 'Other coaching'
+                                  : p?.name || 'Participant',
+                                coachName: coach?.name,
+                                site: isOtherCoaching ? undefined : p?.site,
+                                phone: !isOtherCoaching ? p?.phone : undefined,
+                                service: !isOtherCoaching ? shiftAuth?.service : undefined,
+                                authNumber: !isOtherCoaching ? shiftAuth?.authNumber : undefined,
+                                notes: isOtherCoaching
+                                  ? activity?.notes
+                                  : original.notes || p?.notes,
+                                isOtherCoaching,
+                              }),
+                            )
+                            return
+                          }
                           playSound('open')
                           setIsNewShift(false)
                           setEditingShift(original)
@@ -920,6 +1010,8 @@ export function WeekScheduler({
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      <ShiftDetailsSheet details={shiftDetails} onClose={() => setShiftDetails(null)} />
     </div>
   )
 }

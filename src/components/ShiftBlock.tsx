@@ -206,6 +206,14 @@ export function ShiftBlock({
   return (
     <div
       title={errorSummary}
+      onClick={
+        readOnly
+          ? (e) => {
+              e.stopPropagation()
+              onEdit()
+            }
+          : undefined
+      }
       onContextMenu={(e) => {
         e.preventDefault()
         e.stopPropagation()
@@ -217,7 +225,7 @@ export function ShiftBlock({
       onPointerUp={readOnly ? undefined : (e) => finishPointer(e, true)}
       onPointerCancel={readOnly ? undefined : (e) => finishPointer(e, false)}
       className={`absolute select-none overflow-hidden rounded border text-left leading-snug shadow-sm ${
-        readOnly ? '' : 'touch-none'
+        readOnly ? 'cursor-pointer' : 'touch-none'
       } ${
         errorLevel === 'none' ? '' : ''
       } ${errorClass} ${isSelected ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-slate-900' : ''} ${

@@ -5,9 +5,11 @@ import { resolveSelectedAuthorization } from './lib/authorizations'
 import { collectSchedulingIssueKeys, isAuthorizationFullyScheduled } from './lib/scheduling'
 import { playSound, playWarningSound } from './lib/sounds'
 import { getWeekDates } from './lib/time'
+import { useIsMobile } from './hooks/useMediaQuery'
 import { Sidebar } from './components/Sidebar'
 import { WeekScheduler } from './components/WeekScheduler'
 import { SettingsMenu } from './components/SettingsMenu'
+import { MobileTopBar } from './components/MobileTopBar'
 
 const CELEBRATION_HOLD_MS = 5000
 const CELEBRATION_FADE_MS = 2500
@@ -310,8 +312,34 @@ export default function App() {
     })
   }
 
+  const isMobile = useIsMobile()
+
+  const mobileVisibleCoachShiftIds = useMemo(
+    () => new Set(regionCoaches.map((c) => c.id)),
+    [regionCoaches],
+  )
+  const mobileVisibleParticipantIds = useMemo(
+    () => new Set(regionParticipants.map((p) => p.id)),
+    [regionParticipants],
+  )
+  const mobileVisibleOtherCoachingIds = useMemo(
+    () => new Set(regionOtherCoaching.map((a) => a.id)),
+    [regionOtherCoaching],
+  )
+
+  const effectiveVisibleCoachIds = isMobile ? new Set<string>() : visibleCoachIds
+  const effectiveVisibleCoachShiftIds = isMobile
+    ? mobileVisibleCoachShiftIds
+    : visibleCoachShiftIds
+  const effectiveVisibleParticipantIds = isMobile
+    ? mobileVisibleParticipantIds
+    : visibleParticipantIds
+  const effectiveVisibleOtherCoachingIds = isMobile
+    ? mobileVisibleOtherCoachingIds
+    : visibleOtherCoachingIds
+
   return (
-    <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
+    <div className="flex h-dvh flex-col bg-slate-950 text-slate-100">
       {celebration && (
         <div
           className={`pointer-events-none fixed left-1/2 top-5 z-[210] -translate-x-1/2 rounded-full border border-emerald-500/40 bg-emerald-950/90 px-5 py-2.5 text-sm font-medium text-emerald-200 shadow-lg shadow-emerald-950/50 ${
@@ -321,7 +349,7 @@ export default function App() {
           {celebration.name} — all shifts scheduled!
         </div>
       )}
-      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-800 bg-slate-900 px-5 py-3">
+      <header className="hidden shrink-0 items-center justify-between gap-4 border-b border-slate-800 bg-slate-900 px-5 py-3 md:flex">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Schedule Maker Pro</h1>
           <p className="text-xs text-slate-400">Plan shifts and match coach availability</p>
@@ -329,32 +357,37 @@ export default function App() {
         <SettingsMenu />
       </header>
 
+      <MobileTopBar />
+
       <div className="flex min-h-0 flex-1">
-        <Sidebar
-          selectedParticipantId={validSelection}
-          onSelectParticipant={selectParticipant}
-          selectedOtherCoachingId={validOtherCoachingSelection}
-          onSelectOtherCoaching={selectOtherCoaching}
-          visibleCoachIds={visibleCoachIds}
-          onToggleCoachVisibility={toggleCoachVisibility}
-          visibleCoachShiftIds={visibleCoachShiftIds}
-          onToggleCoachShiftVisibility={toggleCoachShiftVisibility}
-          visibleOtherCoachingIds={visibleOtherCoachingIds}
-          onToggleOtherCoachingVisibility={toggleOtherCoachingVisibility}
-          visibleParticipantIds={visibleParticipantIds}
-          onToggleParticipantVisibility={toggleParticipantVisibility}
-          selectedAuthorizationByParticipant={selectedAuthorizationByParticipant}
-          onSelectAuthorization={selectAuthorization}
-        />
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-950 p-4">
+        <div className="hidden h-full md:flex">
+          <Sidebar
+            selectedParticipantId={validSelection}
+            onSelectParticipant={selectParticipant}
+            selectedOtherCoachingId={validOtherCoachingSelection}
+            onSelectOtherCoaching={selectOtherCoaching}
+            visibleCoachIds={visibleCoachIds}
+            onToggleCoachVisibility={toggleCoachVisibility}
+            visibleCoachShiftIds={visibleCoachShiftIds}
+            onToggleCoachShiftVisibility={toggleCoachShiftVisibility}
+            visibleOtherCoachingIds={visibleOtherCoachingIds}
+            onToggleOtherCoachingVisibility={toggleOtherCoachingVisibility}
+            visibleParticipantIds={visibleParticipantIds}
+            onToggleParticipantVisibility={toggleParticipantVisibility}
+            selectedAuthorizationByParticipant={selectedAuthorizationByParticipant}
+            onSelectAuthorization={selectAuthorization}
+          />
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-950 p-1 md:p-4">
           <WeekScheduler
             selectedParticipantId={validSelection}
             selectedAuthorizationId={selectedAuthorization?.id ?? ''}
             selectedOtherCoachingId={validOtherCoachingSelection}
-            visibleCoachIds={visibleCoachIds}
-            visibleCoachShiftIds={visibleCoachShiftIds}
-            visibleOtherCoachingIds={visibleOtherCoachingIds}
-            visibleParticipantIds={visibleParticipantIds}
+            visibleCoachIds={effectiveVisibleCoachIds}
+            visibleCoachShiftIds={effectiveVisibleCoachShiftIds}
+            visibleOtherCoachingIds={effectiveVisibleOtherCoachingIds}
+            visibleParticipantIds={effectiveVisibleParticipantIds}
+            mobileMode={isMobile}
           />
         </div>
       </div>
