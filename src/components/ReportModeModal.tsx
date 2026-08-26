@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { Participant } from '../types'
+import type { Authorization, Participant } from '../types'
+import { serviceAcronym } from '../types'
 import { useStore } from '../store/useStore'
-import { isCoachingOnlyAuthorization } from '../lib/authorizations'
+import { isCoachingOnlyAuthorization, authorizationOverlapsRange } from '../lib/authorizations'
 import {
   formatHoursValue,
+  getAuthorizationHoursInRange,
   getCoachHoursInRange,
-  getParticipantHoursInRange,
 } from '../lib/scheduling'
 import {
   filterCoachesByRegion,
@@ -38,6 +39,7 @@ interface CoachReportEntry {
 interface ParticipantReportEntry {
   id: string
   participant: Participant
+  authorization: Authorization
   name: string
   hoursWorked: number
   hoursCoached: number
@@ -137,11 +139,9 @@ function ParticipantReportCard({
       {expanded && (
         <div className="border-t border-slate-800 px-3 pb-3 pt-2">
           <p className="font-mono text-[10px] tracking-wide text-slate-500">
-            {entry.participant.authorizations.length === 1
-              ? `Auth # ${entry.participant.authorizations[0].authNumber}`
-              : entry.participant.authorizations
-                  .map((a) => `${a.service}: ${a.authNumber}`)
-                  .join(' · ')}
+            {entry.authorization.service} · Auth # {entry.authorization.authNumber}
+            {' · '}
+            {formatAuthRange(entry.authorization.authStart, entry.authorization.authEnd)}
           </p>
           <div className="mt-1.5 space-y-0.5 text-sm tabular-nums text-slate-300">
             {entry.showWorked && <p>{formatHoursValue(entry.hoursWorked)}h worked</p>}
@@ -250,28 +250,41 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
   const participantEntries = useMemo((): ParticipantReportEntry[] => {
     if (!rangeValid) return []
 
-    return regionParticipants.map((participant) => {
-      const hours = getParticipantHoursInRange(
-        participant.id,
-        regionShifts,
-        startDate,
-        endDate,
-      )
-      const name = participant.name || 'Unnamed'
-      const showWorked = participant.authorizations.some(
-        (a) => !isCoachingOnlyAuthorization(a),
-      )
+    const entries: ParticipantReportEntry[] = []
+    for (const participant of regionParticipants) {
+      for (const authorization of participant.authorizations) {
+        const hours = getAuthorizationHoursInRange(
+          authorization.id,
+          regionShifts,
+          startDate,
+          endDate,
+        )
+        const hasActivity =
+          hours.totalWork > 0 ||
+          hours.totalCoached > 0 ||
+          authorizationOverlapsRange(authorization, startDate, endDate)
 
-      return {
-        id: participant.id,
-        participant,
-        name,
-        hoursWorked: hours.totalWork,
-        hoursCoached: hours.totalCoached,
-        showWorked,
-        copyText: buildCopyText(name, hours.totalWork, hours.totalCoached, showWorked),
+        if (!hasActivity) continue
+
+        const acronym = serviceAcronym(authorization.service)
+        const baseName = participant.name || 'Unnamed'
+        const name = `${baseName}, ${acronym}`
+        const showWorked = !isCoachingOnlyAuthorization(authorization)
+
+        entries.push({
+          id: `${participant.id}:${authorization.id}`,
+          participant,
+          authorization,
+          name,
+          hoursWorked: hours.totalWork,
+          hoursCoached: hours.totalCoached,
+          showWorked,
+          copyText: buildCopyText(name, hours.totalWork, hours.totalCoached, showWorked),
+        })
       }
-    })
+    }
+
+    return entries.sort((a, b) => a.name.localeCompare(b.name))
   }, [regionParticipants, regionShifts, startDate, endDate, rangeValid])
 
   const coachEntries = useMemo((): CoachReportEntry[] => {

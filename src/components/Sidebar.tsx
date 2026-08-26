@@ -14,6 +14,7 @@ import {
   getOtherCoachingHoursForWeek,
   getParticipantHoursForWeek,
   isAuthorizationFullyScheduled,
+  isAuthorizationRelevantForWeek,
   authorizationHasAuthIssue,
   participantHasAuthIssue,
   participantHasHoursIssue,
@@ -21,7 +22,8 @@ import {
 } from '../lib/scheduling'
 import { formatAuthRange, getWeekDates } from '../lib/time'
 import { filterCoachesForWeekView, filterOtherCoachingForWeekView, filterParticipantsForWeekView } from '../lib/regions'
-import type { Coach, OtherCoachingActivity, Participant } from '../types'
+import type { Authorization, Coach, OtherCoachingActivity, Participant } from '../types'
+import { serviceAcronym } from '../types'
 import { CoachModal } from './CoachModal'
 import { ChevronIcon } from './ChevronIcon'
 import { EyeIcon } from './EyeIcon'
@@ -194,52 +196,49 @@ function CoachRow({
 
 function ParticipantRow({
   participant,
+  authorization,
   weekDates,
   selected,
   visible,
-  selectedAuthorizationId,
   onSelect,
-  onSelectAuthorization,
   onEdit,
   onToggleVisibility,
 }: {
   participant: Participant
+  authorization: Authorization
   weekDates: string[]
   selected: boolean
   visible: boolean
-  selectedAuthorizationId?: string
   onSelect: () => void
-  onSelectAuthorization: (authorizationId: string) => void
   onEdit: (e: React.MouseEvent) => void
   onToggleVisibility: () => void
 }) {
   const { state } = useStore()
   const { canEdit } = useAccess()
   const [expanded, setExpanded] = useState(false)
-  const authorization = resolveSelectedAuthorization(participant, selectedAuthorizationId)
-  const weekHours = authorization
-    ? getParticipantHoursForWeek(authorization.id, weekDates, state.shifts, authorization)
-    : null
-  const totalHours = authorization
-    ? getAuthorizationHoursTotal(authorization.id, state.shifts)
-    : { totalWork: 0, totalCoached: 0 }
+  const weekHours = getParticipantHoursForWeek(
+    authorization.id,
+    weekDates,
+    state.shifts,
+    authorization,
+  )
+  const totalHours = getAuthorizationHoursTotal(authorization.id, state.shifts)
   const hasAuthIssue =
-    participantHasAuthIssue(participant, state.shifts) ||
-    (authorization
-      ? authorizationHasAuthIssue(authorization, participant.id, state.shifts)
-      : false)
+    authorizationHasAuthIssue(authorization, participant.id, state.shifts) ||
+    (selected && participantHasAuthIssue(participant, state.shifts))
   const hasHoursIssue = participantHasHoursIssue(
     participant,
     state.shifts,
-    authorization?.id,
+    authorization.id,
   )
-  const fullyScheduled =
-    !!authorization &&
-    isAuthorizationFullyScheduled(authorization, participant.id, state.shifts)
-  const fullyScheduledMessage = authorization
-    ? getAuthorizationFullyScheduledMessage(authorization)
-    : ''
-  const coachingOnly = authorization ? isCoachingOnlyAuthorization(authorization) : false
+  const fullyScheduled = isAuthorizationFullyScheduled(
+    authorization,
+    participant.id,
+    state.shifts,
+  )
+  const fullyScheduledMessage = getAuthorizationFullyScheduledMessage(authorization)
+  const coachingOnly = isCoachingOnlyAuthorization(authorization)
+  const acronym = serviceAcronym(authorization.service)
 
   const statLine = (label: string, value: number, suffix: 'worked' | 'coached') => (
     <div className="text-slate-400">
@@ -288,95 +287,83 @@ function ParticipantRow({
       className={`group grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-0.5 rounded-md border px-2 py-2 ${rowClass}`}
     >
       <button onClick={onSelect} className="min-w-0 overflow-hidden text-left">
-        <div className="truncate text-sm font-medium text-slate-100">
-          {participant.name || 'Unnamed'}
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <span className="truncate text-sm font-medium text-slate-100">
+            {participant.name || 'Unnamed'}
+          </span>
+          <span
+            className="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-300 ring-1 ring-blue-500/25"
+            title={authorization.service}
+          >
+            {acronym}
+          </span>
         </div>
 
         {expanded && (
           <div className="mt-2 space-y-2">
-            {selected && participant.authorizations.length > 1 && (
-              <label className="block" onClick={(e) => e.stopPropagation()}>
-                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-                  Scheduling authorization
+            <div onClick={(e) => e.stopPropagation()}>
+              <AuthorizationStatusBadge authorization={authorization} />
+            </div>
+
+            <div className="space-y-0.5 text-[11px] leading-relaxed">
+              {participant.site && (
+                <div className="truncate text-slate-400">
+                  <span className="text-slate-500">Site: </span>
+                  <span className="text-slate-300">{participant.site}</span>
+                </div>
+              )}
+              <div className="text-slate-400">
+                <span className="text-slate-500">Service: </span>
+                <span className="text-slate-300">
+                  {authorization.service}
+                  {authorization.service !== acronym ? ` (${acronym})` : ''}
                 </span>
-                <select
-                  value={authorization?.id ?? ''}
-                  onChange={(e) => onSelectAuthorization(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1.5 text-xs text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  {participant.authorizations.map((auth) => (
-                    <option key={auth.id} value={auth.id}>
-                      {auth.service}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            {authorization && (
-              <div onClick={(e) => e.stopPropagation()}>
-                <AuthorizationStatusBadge authorization={authorization} />
               </div>
-            )}
-
-            {authorization && weekHours && (
-              <div className="space-y-0.5 text-[11px] leading-relaxed">
-                {participant.site && (
-                  <div className="truncate text-slate-400">
-                    <span className="text-slate-500">Site: </span>
-                    <span className="text-slate-300">{participant.site}</span>
-                  </div>
-                )}
-                <div className="text-slate-400">
-                  <span className="text-slate-500">Service: </span>
-                  <span className="text-slate-300">{authorization.service}</span>
-                </div>
-                <div className="font-mono text-slate-400">
-                  <span className="text-slate-500">Auth #: </span>
-                  <span className="text-slate-300">{authorization.authNumber}</span>
-                </div>
-                <div className={`${hasAuthIssue ? 'text-red-400' : 'text-slate-400'}`}>
-                  <span className={hasAuthIssue ? 'text-red-400/80' : 'text-slate-500'}>
-                    Dates:{' '}
+              <div className="font-mono text-slate-400">
+                <span className="text-slate-500">Auth #: </span>
+                <span className="text-slate-300">{authorization.authNumber}</span>
+              </div>
+              <div className={`${hasAuthIssue ? 'text-red-400' : 'text-slate-400'}`}>
+                <span className={hasAuthIssue ? 'text-red-400/80' : 'text-slate-500'}>
+                  Dates:{' '}
+                </span>
+                <span className={hasAuthIssue ? 'font-medium text-red-300' : 'text-slate-300'}>
+                  {formatAuthRange(authorization.authStart, authorization.authEnd)}
+                </span>
+                {hasAuthIssue && (
+                  <span className="mt-0.5 block text-[10px] text-red-400/90">
+                    Shifts missing authorization or outside date range
                   </span>
-                  <span className={hasAuthIssue ? 'font-medium text-red-300' : 'text-slate-300'}>
-                    {formatAuthRange(authorization.authStart, authorization.authEnd)}
-                  </span>
-                  {hasAuthIssue && (
-                    <span className="mt-0.5 block text-[10px] text-red-400/90">
-                      Shifts missing authorization or outside date range
-                    </span>
-                  )}
-                </div>
-
-                {!coachingOnly && statLine('Worked This Week', weekHours.totalWorkScheduled, 'worked')}
-                {!coachingOnly &&
-                  fractionLine(
-                    'Authorization Work Hours',
-                    totalHours.totalWork,
-                    authorization.workingHours,
-                    'worked',
-                  )}
-                {statLine('Coached Hours This Week', weekHours.coachedScheduled, 'coached')}
-                {fractionLine(
-                  'Authorization Coached Hours',
-                  totalHours.totalCoached,
-                  authorization.coachingHours,
-                  'coached',
-                )}
-
-                {fullyScheduled && (
-                  <div className="pt-1 font-medium text-emerald-400">{fullyScheduledMessage}</div>
-                )}
-
-                {participant.notes && (
-                  <div className="pt-0.5 text-slate-500">
-                    <span className="text-slate-500">Notes / risks: </span>
-                    <span className="text-slate-400">{participant.notes}</span>
-                  </div>
                 )}
               </div>
-            )}
+
+              {!coachingOnly && statLine('Worked This Week', weekHours.totalWorkScheduled, 'worked')}
+              {!coachingOnly &&
+                fractionLine(
+                  'Authorization Work Hours',
+                  totalHours.totalWork,
+                  authorization.workingHours,
+                  'worked',
+                )}
+              {statLine('Coached Hours This Week', weekHours.coachedScheduled, 'coached')}
+              {fractionLine(
+                'Authorization Coached Hours',
+                totalHours.totalCoached,
+                authorization.coachingHours,
+                'coached',
+              )}
+
+              {fullyScheduled && (
+                <div className="pt-1 font-medium text-emerald-400">{fullyScheduledMessage}</div>
+              )}
+
+              {participant.notes && (
+                <div className="pt-0.5 text-slate-500">
+                  <span className="text-slate-500">Notes / risks: </span>
+                  <span className="text-slate-400">{participant.notes}</span>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </button>
@@ -414,27 +401,25 @@ function ParticipantRow({
           ✎
         </button>
         )}
-        {authorization && (
-          <div
-            className="flex h-7 items-center pl-0.5"
-            title={
-              coachingOnly
-                ? 'Job Coaching — working hours do not apply'
-                : 'Worked hours / authorized working hours'
-            }
-          >
-            {coachingOnly ? (
-              <span className="inline-block min-w-[2.75rem] text-right text-xs font-semibold tabular-nums text-slate-400">
-                JC
-              </span>
-            ) : (
-              <CoachHoursLabel
-                assigned={totalHours.totalWork}
-                max={authorization.workingHours}
-              />
-            )}
-          </div>
-        )}
+        <div
+          className="flex h-7 items-center pl-0.5"
+          title={
+            coachingOnly
+              ? 'Job Coaching — working hours do not apply'
+              : 'Worked hours / authorized working hours'
+          }
+        >
+          {coachingOnly ? (
+            <span className="inline-block min-w-[2.75rem] text-right text-xs font-semibold tabular-nums text-slate-400">
+              JC
+            </span>
+          ) : (
+            <CoachHoursLabel
+              assigned={totalHours.totalWork}
+              max={authorization.workingHours}
+            />
+          )}
+        </div>
       </div>
     </div>
   )
@@ -762,29 +747,48 @@ export function Sidebar({
                   </ul>
                 </div>
               ) : (
-                regionParticipants.map((p) => (
-                  <ParticipantRow
-                    key={p.id}
-                    participant={p}
-                    weekDates={weekDates}
-                    selected={p.id === selectedParticipantId}
-                    visible={visibleParticipantIds.has(p.id)}
-                    selectedAuthorizationId={selectedAuthorizationByParticipant[p.id]}
-                    onSelect={() => {
-                      onSelectParticipant(p.id)
-                      onSelectOtherCoaching('')
-                    }}
-                    onSelectAuthorization={(authorizationId) =>
-                      onSelectAuthorization(p.id, authorizationId)
-                    }
-                    onToggleVisibility={() => onToggleParticipantVisibility(p.id)}
-                    onEdit={(e) => {
-                      e.stopPropagation()
-                      setIsNewParticipant(false)
-                      setEditingParticipant(p)
-                    }}
-                  />
-                ))
+                regionParticipants.flatMap((p) => {
+                  const weekAuths = p.authorizations.filter((auth) =>
+                    isAuthorizationRelevantForWeek(auth, p.id, state.shifts, weekDates),
+                  )
+                  const auths =
+                    weekAuths.length > 0
+                      ? weekAuths
+                      : (() => {
+                          const fallback = resolveSelectedAuthorization(
+                            p,
+                            selectedAuthorizationByParticipant[p.id],
+                          )
+                          return fallback ? [fallback] : []
+                        })()
+
+                  return auths.map((auth) => (
+                    <ParticipantRow
+                      key={`${p.id}:${auth.id}`}
+                      participant={p}
+                      authorization={auth}
+                      weekDates={weekDates}
+                      selected={
+                        p.id === selectedParticipantId &&
+                        auth.id ===
+                          (selectedAuthorizationByParticipant[p.id] ??
+                            resolveSelectedAuthorization(p, undefined)?.id)
+                      }
+                      visible={visibleParticipantIds.has(p.id)}
+                      onSelect={() => {
+                        onSelectParticipant(p.id)
+                        onSelectAuthorization(p.id, auth.id)
+                        onSelectOtherCoaching('')
+                      }}
+                      onToggleVisibility={() => onToggleParticipantVisibility(p.id)}
+                      onEdit={(e) => {
+                        e.stopPropagation()
+                        setIsNewParticipant(false)
+                        setEditingParticipant(p)
+                      }}
+                    />
+                  ))
+                })
               )}
             </div>
           </div>

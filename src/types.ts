@@ -94,6 +94,24 @@ export const PARTICIPANT_SERVICES: ParticipantService[] = [
   'Other Service',
 ]
 
+/** Short label for sidebar / reports (e.g. Interview Prep → IP) */
+export const PARTICIPANT_SERVICE_ACRONYMS: Record<ParticipantService, string> = {
+  WA: 'WA',
+  CPO: 'CPO',
+  TWE: 'TWE',
+  JC: 'JC',
+  'LVL UP': 'LVL UP',
+  'Interview Prep': 'IP',
+  'Job Exploration': 'JE',
+  Orientation: 'ORI',
+  'Other Module': 'OM',
+  'Other Service': 'OS',
+}
+
+export function serviceAcronym(service: ParticipantService): string {
+  return PARTICIPANT_SERVICE_ACRONYMS[service] ?? service
+}
+
 export const PARTICIPANT_NOTES_MAX = 30
 
 export const PARTICIPANT_CHECK_ADDRESS_MAX = 100

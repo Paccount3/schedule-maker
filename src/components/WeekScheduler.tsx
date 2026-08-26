@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import type { Coach, Shift } from '../types'
+import { serviceAcronym } from '../types'
 import { useStore } from '../store/useStore'
 import { useAccess } from '../store/useAccess'
 import { useConfirm } from '../store/useConfirm'
@@ -486,7 +487,9 @@ export function WeekScheduler({
                   Viewing{' '}
                   <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
                   {' · '}
-                  <span className="font-medium text-blue-300">{selectedAuthorization.service}</span>
+                  <span className="font-medium text-blue-300">
+                    {serviceAcronym(selectedAuthorization.service)}
+                  </span>
                   {participant.site ? ` · ${participant.site}` : ''}
                 </>
               ) : (
@@ -505,7 +508,9 @@ export function WeekScheduler({
                 Adding shifts for{' '}
                 <span className="font-medium text-blue-400">{participant.name || 'Unnamed'}</span>
                 {' · '}
-                <span className="font-medium text-blue-300">{selectedAuthorization.service}</span>
+                <span className="font-medium text-blue-300">
+                  {serviceAcronym(selectedAuthorization.service)}
+                </span>
                 {participant.site ? ` · ${participant.site}` : ''}
                 {selectedAuthorization.status !== 'active' && (
                   <span className="text-amber-400"> · Authorization not active</span>
@@ -527,7 +532,7 @@ export function WeekScheduler({
             <div className="mt-2 flex flex-wrap gap-2 text-sm">
               {!isCoachingOnlyAuthorization(selectedAuthorization) && (
                 <span className="rounded-full bg-slate-800 px-3 py-1 tabular-nums text-slate-300">
-                  {participant.name} ({selectedAuthorization.service}):{' '}
+                  {participant.name} ({serviceAcronym(selectedAuthorization.service)}):{' '}
                   {formatHoursValue(hoursSummary.totalWorkScheduled)}h work
                 </span>
               )}

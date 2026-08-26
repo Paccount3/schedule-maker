@@ -29,7 +29,7 @@ import {
   persistShifts,
   saveUiPrefs,
 } from '../lib/supabaseSync'
-import { addDays, durationHours, endMinutesFromStartingHours, parseDateInput, startOfWeek, toDateInput } from '../lib/time'
+import { addDays, durationHours, endMinutesFromStartingHours, parseDateInput, startOfWeek, toDateInput, todayDateInput } from '../lib/time'
 import { useAccess } from './useAccess'
 
 interface StoreContextValue {
@@ -46,7 +46,7 @@ interface StoreContextValue {
   removeParticipant: (id: string) => void
   addCoach: () => Coach
   updateCoach: (c: Coach) => void
-  removeCoach: (id: string) => void
+  removeCoach: (id: string, mode?: 'convert-to-solo' | 'keep-history') => void
   addOtherCoachingActivity: () => OtherCoachingActivity
   updateOtherCoachingActivity: (activity: OtherCoachingActivity) => void
   removeOtherCoachingActivity: (id: string) => void
@@ -212,8 +212,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }))
       persist('updateCoach', () => persistCoach(c))
     },
-    removeCoach: (id) => {
+    removeCoach: (id, mode = 'convert-to-solo') => {
       if (!canEdit) return
+
+      if (mode === 'keep-history') {
+        const existing = state.coaches.find((c) => c.id === id)
+        if (!existing) return
+        const inactivated: Coach = {
+          ...existing,
+          inactiveDate: existing.inactiveDate ?? todayDateInput(),
+        }
+        update((s) => ({
+          ...s,
+          coaches: s.coaches.map((c) => (c.id === id ? inactivated : c)),
+        }))
+        persist('deactivateCoach', () => persistCoach(inactivated))
+        return
+      }
+
       const deletedShiftIds = state.shifts
         .filter((sh) => sh.type === 'other-coaching' && sh.coachId === id)
         .map((sh) => sh.id)

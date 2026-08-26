@@ -8,7 +8,7 @@ import {
 import { useStore } from '../store/useStore'
 import { useConfirm } from '../store/useConfirm'
 import { otherCoachingDeleteConfirm } from '../lib/confirmMessages'
-import { filterCoachesByRegion } from '../lib/regions'
+import { filterCoachesForWeekView } from '../lib/regions'
 import { parseDateInput, startOfWeek, toDateInput } from '../lib/time'
 import { Modal } from './Modal'
 import { CalendarScheduleHint } from './CalendarScheduleHint'
@@ -38,7 +38,11 @@ export function OtherCoachingModal({ activity: initial, isNew, onClose }: OtherC
   const [activity, setActivity] = useState(initial)
   const [coachError, setCoachError] = useState<string | undefined>()
 
-  const regionCoaches = filterCoachesByRegion(state.coaches, state.selectedRegionId)
+  const regionCoaches = filterCoachesForWeekView(
+    state.coaches,
+    state.selectedRegionId,
+    state.weekStart,
+  )
 
   const [weekError, setWeekError] = useState<string | undefined>()
 

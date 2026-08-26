@@ -12,13 +12,24 @@ export function participantDeleteConfirm(name: string): ConfirmDialogOptions {
   }
 }
 
-export function coachDeleteConfirm(name: string): ConfirmDialogOptions {
+export function coachConvertToSoloConfirm(name: string): ConfirmDialogOptions {
   const displayName = name.trim() || 'this coach'
 
   return {
-    title: `Remove ${displayName}?`,
-    impact: `This coach will be permanently removed. All shifts currently assigned to them will become solo shifts with no coach. Their availability, contact information, and schedule history as a coach will be deleted.`,
-    confirmLabel: 'Remove coach',
+    title: `Convert shifts to solo and remove ${displayName}?`,
+    impact: `All coached shifts for this coach become solo (no coach). Other coaching assignments for them are deleted. The coach record is permanently removed. Use this only when you do not need their name on past shifts for billing.`,
+    confirmLabel: 'Convert to solo & remove',
+  }
+}
+
+export function coachKeepHistoryConfirm(name: string): ConfirmDialogOptions {
+  const displayName = name.trim() || 'this coach'
+
+  return {
+    title: `Keep history and deactivate ${displayName}?`,
+    impact: `Past shifts stay under this coach’s name for billing and reports. They are marked inactive so they no longer appear on future weeks or when assigning new shifts. The coach record is kept.`,
+    confirmLabel: 'Keep history & deactivate',
+    variant: 'warning',
   }
 }
 

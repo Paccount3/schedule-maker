@@ -326,6 +326,27 @@ export function getParticipantHoursInRange(
   return { totalWork, totalCoached }
 }
 
+/** Hours for a single authorization within a date range */
+export function getAuthorizationHoursInRange(
+  authorizationId: string,
+  shifts: Shift[],
+  startDate: string,
+  endDate: string,
+): ParticipantHoursTotal {
+  let totalWork = 0
+  let totalCoached = 0
+
+  for (const shift of shifts) {
+    if (shift.authorizationId !== authorizationId) continue
+    if (shift.date < startDate || shift.date > endDate) continue
+    const hours = durationHours(shift.startMinutes, shift.endMinutes)
+    totalWork += hours
+    if (shift.type === 'coached') totalCoached += hours
+  }
+
+  return { totalWork, totalCoached }
+}
+
 export function getCoachHoursInRange(
   coachId: string,
   shifts: Shift[],
