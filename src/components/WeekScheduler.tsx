@@ -835,6 +835,7 @@ export function WeekScheduler({
                           coach?.color ?? (isCoached || isOtherCoaching ? '#64748b' : '#64748b')
                         }
                         coachName={coach?.name}
+                        coachPhone={coach?.phone || undefined}
                         isCoached={isCoached || isOtherCoaching}
                         isOtherCoaching={isOtherCoaching}
                         isSelected={isSelected}
@@ -861,6 +862,7 @@ export function WeekScheduler({
                                   ? activity?.name || 'Other coaching'
                                   : p?.name || 'Participant',
                                 coachName: coach?.name,
+                                coachPhone: coach?.phone || undefined,
                                 site: isOtherCoaching ? undefined : p?.site,
                                 phone: !isOtherCoaching ? p?.phone : undefined,
                                 service: !isOtherCoaching ? shiftAuth?.service : undefined,

@@ -33,6 +33,7 @@ interface ShiftBlockProps {
   site?: string
   accentColor: string
   coachName?: string
+  coachPhone?: string
   isCoached: boolean
   isOtherCoaching?: boolean
   isSelected: boolean
@@ -65,6 +66,7 @@ export function ShiftBlock({
   site,
   accentColor,
   coachName,
+  coachPhone,
   isCoached,
   isOtherCoaching = false,
   isSelected,
@@ -271,6 +273,9 @@ export function ShiftBlock({
             : isCoached && coachName
               ? coachName
               : 'NO COACH'}
+          {coachPhone && (isOtherCoaching || (isCoached && coachName))
+            ? ` · ${coachPhone}`
+            : ''}
         </div>
         {site && (
           <div

@@ -6,6 +6,7 @@ export type ShiftDetails = {
   title: string
   subtitle?: string
   coachName?: string
+  coachPhone?: string
   site?: string
   phone?: string
   service?: string
@@ -64,6 +65,18 @@ export function ShiftDetailsSheet({ details, onClose }: ShiftDetailsSheetProps) 
               <dd className="mt-0.5 text-slate-200">{details.coachName}</dd>
             </div>
           )}
+          {details.coachPhone && (
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Coach phone
+              </dt>
+              <dd className="mt-0.5">
+                <a href={`tel:${details.coachPhone}`} className="text-blue-400 hover:text-blue-300">
+                  {details.coachPhone}
+                </a>
+              </dd>
+            </div>
+          )}
           {details.service && (
             <div>
               <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
@@ -83,7 +96,9 @@ export function ShiftDetailsSheet({ details, onClose }: ShiftDetailsSheetProps) 
           )}
           {details.phone && (
             <div>
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Phone</dt>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Participant phone
+              </dt>
               <dd className="mt-0.5">
                 <a href={`tel:${details.phone}`} className="text-blue-400 hover:text-blue-300">
                   {details.phone}
@@ -107,6 +122,7 @@ export function buildShiftDetails(params: {
   shift: Shift
   title: string
   coachName?: string
+  coachPhone?: string
   site?: string
   phone?: string
   service?: string
@@ -119,6 +135,7 @@ export function buildShiftDetails(params: {
     title: params.title,
     subtitle: params.isOtherCoaching ? 'Other coaching assignment' : undefined,
     coachName: params.coachName,
+    coachPhone: params.coachPhone,
     site: params.site,
     phone: params.phone,
     service: params.service,
