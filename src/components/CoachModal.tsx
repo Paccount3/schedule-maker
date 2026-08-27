@@ -49,7 +49,12 @@ function AvailabilityEditor({
 
   return (
     <div className="space-y-2">
-      <span className="text-xs font-medium text-slate-400">Daily Availability</span>
+      <div>
+        <span className="text-xs font-medium text-slate-400">Daily Availability</span>
+        <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
+          Changes apply to shifts today or later and do not affect past scheduled shifts.
+        </p>
+      </div>
       {DAYS.map((day) => {
         const range = availability[day]
         const enabled = !!range

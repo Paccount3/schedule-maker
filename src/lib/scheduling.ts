@@ -6,7 +6,7 @@ import {
   isAuthorizationSchedulable,
   isCoachingOnlyAuthorization,
 } from './authorizations'
-import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, SLOT_MINUTES, toDateInput } from './time'
+import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, SLOT_MINUTES, toDateInput, todayDateInput } from './time'
 
 export interface ShiftConflict {
   type:
@@ -186,17 +186,21 @@ export function getShiftConflicts(
   }
 
   if (shiftUsesCoach(shift) && shift.coachId && coach) {
-    const avail = coach.availability[dayOfWeek]
-    if (!avail) {
-      conflicts.push({
-        type: 'coach_unavailable',
-        message: `${coach.name} is not available on this day`,
-      })
-    } else if (shift.startMinutes < avail.startMinutes || shift.endMinutes > avail.endMinutes) {
-      conflicts.push({
-        type: 'outside_coach_hours',
-        message: `${coach.name} is only available ${formatMinutesRange(avail.startMinutes, avail.endMinutes)} on this day`,
-      })
+    // Availability is a live weekly pattern — only validate it for today/future
+    // so changing weekends later does not flag historical shifts.
+    if (shift.date >= todayDateInput()) {
+      const avail = coach.availability[dayOfWeek]
+      if (!avail) {
+        conflicts.push({
+          type: 'coach_unavailable',
+          message: `${coach.name} is not available on this day`,
+        })
+      } else if (shift.startMinutes < avail.startMinutes || shift.endMinutes > avail.endMinutes) {
+        conflicts.push({
+          type: 'outside_coach_hours',
+          message: `${coach.name} is only available ${formatMinutesRange(avail.startMinutes, avail.endMinutes)} on this day`,
+        })
+      }
     }
 
     const overlapping = allShifts.filter(
