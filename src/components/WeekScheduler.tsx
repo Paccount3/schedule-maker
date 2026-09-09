@@ -724,39 +724,32 @@ export function WeekScheduler({
                     />
                   ))}
 
-                  {hours.map((m) => (
-                    <div
-                      key={m}
-                      className={`absolute w-full border-b border-slate-800/30 ${
-                        canAddShifts
-                          ? 'cursor-pointer hover:bg-blue-950/30'
-                          : 'cursor-default'
-                      }`}
-                      style={{
-                        top: ((m - CALENDAR_VIEW_START) / 60) * hourHeight,
-                        height: hourHeight,
-                      }}
-                      onClick={() => handleCellClick(date, m)}
-                    />
-                  ))}
-
-                  {hours.map((m) =>
-                    m + SLOT_MINUTES < CALENDAR_VIEW_END ? (
-                      <div
-                        key={`half-${m}`}
-                        className={`absolute w-full border-b border-dashed border-slate-800/20 ${
-                          canAddShifts
-                            ? 'cursor-pointer hover:bg-blue-950/20'
-                            : 'cursor-default'
-                        }`}
-                        style={{
-                          top: ((m + SLOT_MINUTES - CALENDAR_VIEW_START) / 60) * hourHeight,
-                          height: hourHeight / 2,
-                        }}
-                        onClick={() => handleCellClick(date, m + SLOT_MINUTES)}
-                      />
-                    ) : null,
-                  )}
+                  {hours.map((m) => {
+                    const slotsPerHour = 60 / SLOT_MINUTES
+                    return Array.from({ length: slotsPerHour }, (_, i) => {
+                      const start = m + i * SLOT_MINUTES
+                      if (start >= CALENDAR_VIEW_END) return null
+                      return (
+                        <div
+                          key={`slot-${start}`}
+                          className={`absolute w-full border-b ${
+                            i === 0
+                              ? 'border-slate-800/30'
+                              : 'border-dashed border-slate-800/20'
+                          } ${
+                            canAddShifts
+                              ? 'cursor-pointer hover:bg-blue-950/30'
+                              : 'cursor-default'
+                          }`}
+                          style={{
+                            top: ((start - CALENDAR_VIEW_START) / 60) * hourHeight,
+                            height: hourHeight / slotsPerHour,
+                          }}
+                          onClick={() => handleCellClick(date, start)}
+                        />
+                      )
+                    })
+                  })}
 
                   {dayShifts.map((shift) => {
                     const layout = dayLayouts.get(shift.id)

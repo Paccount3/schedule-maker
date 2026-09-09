@@ -183,7 +183,7 @@ export const GRID_START = 0
 export const GRID_END = 24 * 60
 export const CALENDAR_VIEW_START = 8 * 60
 export const CALENDAR_VIEW_END = 21 * 60
-export const SLOT_MINUTES = 30
+export const SLOT_MINUTES = 15
 
 /** End time for a calendar block from a starting hour length (e.g. assignment starting hours). */
 export function endMinutesFromStartingHours(
