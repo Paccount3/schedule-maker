@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Shift } from '../types'
 import { coachShiftStyle, shiftLabelFontSize, soloShiftStyle } from '../lib/colors'
 import { formatMinutesRange } from '../lib/time'
@@ -22,6 +23,9 @@ import {
 } from '../lib/scheduling'
 
 const DRAG_THRESHOLD_PX = 4
+const POPUP_OFFSET = 14
+const POPUP_WIDTH = 280
+const HOVER_DELAY_MS = 450
 
 interface ShiftBlockProps {
   shift: Shift
@@ -55,6 +59,259 @@ interface ShiftBlockProps {
   onDragCancel: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   readOnly?: boolean
+}
+
+type ShiftDetailContentProps = {
+  shift: Shift
+  participantName: string
+  participantPhone?: string
+  site?: string
+  coachName?: string
+  coachPhone?: string
+  isCoached: boolean
+  isOtherCoaching: boolean
+  authorizationService?: string
+  authorizationNumber?: string
+  authorizationHoursLines: AuthorizationHoursDisplayLine[]
+  hoursThisWeek?: number
+  milestoneLabels: string[]
+  fullyScheduledLabel?: string
+  errorLevel: ShiftErrorLevel
+  errorSummary?: string
+  multiShiftNotice: boolean
+  compact: boolean
+  fontSize?: number
+  subFontSize?: number
+  siteFontSize?: number
+  detailFontSize?: number
+  errorFontSize?: number
+}
+
+function ShiftDetailContent({
+  shift,
+  participantName,
+  participantPhone,
+  site,
+  coachName,
+  coachPhone,
+  isCoached,
+  isOtherCoaching,
+  authorizationService,
+  authorizationNumber,
+  authorizationHoursLines,
+  hoursThisWeek,
+  milestoneLabels,
+  fullyScheduledLabel,
+  errorLevel,
+  errorSummary,
+  multiShiftNotice,
+  compact,
+  fontSize,
+  subFontSize,
+  siteFontSize,
+  detailFontSize,
+  errorFontSize,
+}: ShiftDetailContentProps) {
+  const coachLabel = isOtherCoaching
+    ? coachName || 'NO COACH'
+    : isCoached && coachName
+      ? coachName
+      : 'NO COACH'
+  const coachLine =
+    coachPhone && (isOtherCoaching || (isCoached && coachName))
+      ? `${coachLabel} · ${coachPhone}`
+      : coachLabel
+
+  return (
+    <div
+      className={compact ? 'pointer-events-none relative z-0 px-1.5 py-1' : 'space-y-1 px-1'}
+      style={compact && fontSize ? { fontSize: `${fontSize}px` } : undefined}
+    >
+      <div className={compact ? 'truncate font-semibold' : 'text-sm font-semibold text-slate-100'}>
+        {participantName}
+      </div>
+      <div className={compact ? 'truncate opacity-90' : 'text-sm text-slate-200'}>
+        {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
+      </div>
+      {!isOtherCoaching && authorizationService && (
+        <div
+          className={compact ? 'truncate opacity-85' : 'text-sm text-slate-300'}
+          style={compact ? { fontSize: `${subFontSize}px` } : undefined}
+        >
+          {authorizationService}
+          {authorizationNumber ? ` · Auth ${authorizationNumber}` : ''}
+        </div>
+      )}
+      <div
+        className={compact ? 'truncate opacity-80' : 'text-sm text-slate-300'}
+        style={compact ? { fontSize: `${subFontSize}px` } : undefined}
+      >
+        {coachLine}
+      </div>
+      {site && (
+        <div
+          className={compact ? 'truncate opacity-70' : 'text-sm text-slate-400'}
+          style={compact ? { fontSize: `${siteFontSize}px` } : undefined}
+        >
+          {site}
+        </div>
+      )}
+      {participantPhone && !isOtherCoaching && (
+        <div
+          className={compact ? 'truncate opacity-70' : 'text-sm text-slate-400'}
+          style={compact ? { fontSize: `${siteFontSize}px` } : undefined}
+        >
+          {participantPhone}
+        </div>
+      )}
+      {hoursThisWeek !== undefined && (
+        <div
+          className={
+            compact
+              ? 'truncate tabular-nums opacity-80'
+              : 'text-sm tabular-nums text-slate-200'
+          }
+          style={compact ? { fontSize: `${detailFontSize}px` } : undefined}
+        >
+          Hours this week scheduled: {formatHoursValue(hoursThisWeek)}
+        </div>
+      )}
+      {authorizationHoursLines.map((line) => (
+        <div
+          key={line.label}
+          className={
+            compact
+              ? `truncate tabular-nums ${line.overLimit ? 'text-amber-300/95' : 'opacity-75'}`
+              : `text-sm tabular-nums ${line.overLimit ? 'text-amber-300' : 'text-slate-300'}`
+          }
+          style={compact ? { fontSize: `${detailFontSize}px` } : undefined}
+        >
+          {line.label}
+        </div>
+      ))}
+      {milestoneLabels.map((label) => (
+        <div
+          key={label}
+          className={compact ? 'truncate text-sky-300/90' : 'text-sm text-sky-300'}
+          style={compact ? { fontSize: `${detailFontSize}px` } : undefined}
+        >
+          {label}
+        </div>
+      ))}
+      {fullyScheduledLabel && (
+        <div
+          className={
+            compact
+              ? 'mt-0.5 flex items-start gap-1 font-medium text-emerald-400'
+              : 'flex items-start gap-1 text-sm font-medium text-emerald-400'
+          }
+          style={compact ? { fontSize: `${errorFontSize}px` } : undefined}
+        >
+          <span className="shrink-0 leading-none" aria-hidden>
+            ✓
+          </span>
+          <span className="min-w-0 leading-tight drop-shadow-sm">{fullyScheduledLabel}</span>
+        </div>
+      )}
+      {errorLevel !== 'none' && errorSummary && (
+        <div
+          className={
+            compact
+              ? 'mt-0.5 truncate font-medium opacity-90'
+              : 'text-sm font-medium text-slate-100'
+          }
+          style={compact ? { fontSize: `${errorFontSize}px` } : undefined}
+        >
+          {compact
+            ? errorSummary
+                .split('\n')
+                .filter((line) => line !== MULTI_SHIFT_DAY_MESSAGE)[0]
+            : errorSummary
+                .split('\n')
+                .filter((line) => line !== MULTI_SHIFT_DAY_MESSAGE)
+                .join(' · ')}
+        </div>
+      )}
+      {multiShiftNotice && (
+        <div
+          className={
+            compact
+              ? 'mt-0.5 flex items-start gap-1 text-slate-400/90'
+              : 'flex items-start gap-1 text-sm text-slate-400'
+          }
+          style={compact ? { fontSize: `${errorFontSize}px` } : undefined}
+        >
+          <span className="shrink-0 font-bold leading-none text-slate-500">!</span>
+          <span className="min-w-0 leading-tight">{MULTI_SHIFT_DAY_MESSAGE}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ShiftHoverPopup({
+  x,
+  y,
+  accentColor,
+  isCoached,
+  errorLevel,
+  children,
+}: {
+  x: number
+  y: number
+  accentColor: string
+  isCoached: boolean
+  errorLevel: ShiftErrorLevel
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ left: x + POPUP_OFFSET, top: y + POPUP_OFFSET })
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    let left = x + POPUP_OFFSET
+    let top = y + POPUP_OFFSET
+    if (left + rect.width > window.innerWidth - 8) {
+      left = Math.max(8, x - rect.width - POPUP_OFFSET)
+    }
+    if (top + rect.height > window.innerHeight - 8) {
+      top = Math.max(8, y - rect.height - POPUP_OFFSET)
+    }
+    setPos({ left, top })
+  }, [x, y])
+
+  const errorClass =
+    errorLevel === 'critical'
+      ? 'border-2 border-red-500 bg-red-950 text-red-50'
+      : errorLevel === 'warning'
+        ? 'border-2 border-amber-500 bg-amber-950 text-amber-50'
+        : ''
+
+  return createPortal(
+    <div
+      ref={ref}
+      className={`pointer-events-none fixed z-[220] rounded-lg border p-3 shadow-2xl shadow-black/60 ${
+        errorClass || 'border-slate-600 bg-slate-900 text-slate-100'
+      }`}
+      style={{
+        left: pos.left,
+        top: pos.top,
+        width: POPUP_WIDTH,
+        ...(errorLevel === 'none'
+          ? {
+              backgroundColor: '#0f172a',
+              borderColor: isCoached ? accentColor : '#64748b',
+              borderLeftWidth: 4,
+            }
+          : undefined),
+      }}
+    >
+      {children}
+    </div>,
+    document.body,
+  )
 }
 
 export function ShiftBlock({
@@ -99,6 +356,33 @@ export function ShiftBlock({
     originEnd: number
     dragging: boolean
   } | null>(null)
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null)
+  const [hoverReady, setHoverReady] = useState(false)
+  const hoverTimerRef = useRef<number | null>(null)
+
+  const clearHoverPopup = () => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+    setHoverReady(false)
+    setHoverPos(null)
+  }
+
+  const scheduleHoverPopup = (x: number, y: number) => {
+    setHoverPos({ x, y })
+    if (hoverReady || hoverTimerRef.current !== null) return
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null
+      setHoverReady(true)
+    }, HOVER_DELAY_MS)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current !== null) window.clearTimeout(hoverTimerRef.current)
+    }
+  }, [])
 
   const pos = layoutStyle(layout)
   const blockHeight = Math.max(height, 22)
@@ -106,7 +390,6 @@ export function ShiftBlock({
   const subFontSize = Math.max(9, fontSize - 1)
   const errorFontSize = Math.max(9, fontSize - 2)
   const siteFontSize = Math.max(8, subFontSize - 2)
-
   const detailFontSize = Math.max(8, errorFontSize - 1)
 
   const errorClass =
@@ -117,6 +400,33 @@ export function ShiftBlock({
         : ''
 
   const useAccentStyle = errorLevel === 'none'
+  const showHoverPopup = hoverReady && !!hoverPos && !isDragging
+
+  const detailProps: ShiftDetailContentProps = {
+    shift,
+    participantName,
+    participantPhone,
+    site,
+    coachName,
+    coachPhone,
+    isCoached,
+    isOtherCoaching,
+    authorizationService,
+    authorizationNumber,
+    authorizationHoursLines,
+    hoursThisWeek,
+    milestoneLabels,
+    fullyScheduledLabel,
+    errorLevel,
+    errorSummary,
+    multiShiftNotice,
+    compact: true,
+    fontSize,
+    subFontSize,
+    siteFontSize,
+    detailFontSize,
+    errorFontSize,
+  }
 
   const buildPreview = (
     ptr: NonNullable<typeof pointerRef.current>,
@@ -156,6 +466,7 @@ export function ShiftBlock({
     if (readOnly || e.button !== 0) return
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
+    clearHoverPopup()
 
     const rect = e.currentTarget.getBoundingClientRect()
     const mode = getDragMode(e.clientY, rect.top, rect.height)
@@ -181,6 +492,7 @@ export function ShiftBlock({
     if (!ptr.dragging) {
       if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return
       ptr.dragging = true
+      clearHoverPopup()
       onDragStart()
     }
 
@@ -209,151 +521,89 @@ export function ShiftBlock({
   }
 
   return (
-    <div
-      title={errorSummary}
-      onClick={
-        readOnly
-          ? (e) => {
-              e.stopPropagation()
-              onEdit()
+    <>
+      <div
+        onClick={
+          readOnly
+            ? (e) => {
+                e.stopPropagation()
+                onEdit()
+              }
+            : undefined
+        }
+        onContextMenu={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          if (readOnly) return
+          onContextMenu?.(e)
+        }}
+        onPointerDown={readOnly ? undefined : handlePointerDown}
+        onPointerMove={readOnly ? undefined : handlePointerMove}
+        onPointerUp={readOnly ? undefined : (e) => finishPointer(e, true)}
+        onPointerCancel={readOnly ? undefined : (e) => finishPointer(e, false)}
+        onMouseEnter={(e) => {
+          if (isDragging || pointerRef.current?.dragging) return
+          if (window.matchMedia('(hover: hover)').matches) {
+            scheduleHoverPopup(e.clientX, e.clientY)
+          }
+        }}
+        onMouseMove={(e) => {
+          if (isDragging || pointerRef.current?.dragging) {
+            clearHoverPopup()
+            return
+          }
+          if (window.matchMedia('(hover: hover)').matches) {
+            if (hoverReady) {
+              setHoverPos({ x: e.clientX, y: e.clientY })
+            } else {
+              scheduleHoverPopup(e.clientX, e.clientY)
             }
-          : undefined
-      }
-      onContextMenu={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (readOnly) return
-        onContextMenu?.(e)
-      }}
-      onPointerDown={readOnly ? undefined : handlePointerDown}
-      onPointerMove={readOnly ? undefined : handlePointerMove}
-      onPointerUp={readOnly ? undefined : (e) => finishPointer(e, true)}
-      onPointerCancel={readOnly ? undefined : (e) => finishPointer(e, false)}
-      className={`absolute select-none overflow-hidden rounded border text-left leading-snug shadow-sm ${
-        readOnly ? 'cursor-pointer' : 'touch-none'
-      } ${
-        errorLevel === 'none' ? '' : ''
-      } ${errorClass} ${isSelected ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-slate-900' : ''} ${
-        isDragging ? 'z-30 opacity-90 shadow-lg' : errorLevel === 'critical' ? '' : 'z-10 hover:z-20'
-      }`}
-      style={{
-        top: `${top}px`,
-        height: `${blockHeight}px`,
-        left: pos.left,
-        width: pos.width,
-        fontSize: `${fontSize}px`,
-        ...(useAccentStyle
-          ? isCoached
-            ? coachShiftStyle(accentColor)
-            : soloShiftStyle()
-          : undefined),
-      }}
-    >
-      {!readOnly && (
-        <>
-          <div className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize" aria-hidden />
-          <div className="absolute inset-x-0 bottom-0 z-10 h-2 cursor-ns-resize" aria-hidden />
-          <div className="absolute inset-x-0 top-2 bottom-2 z-10 cursor-grab active:cursor-grabbing" aria-hidden />
-        </>
-      )}
-      <div className="pointer-events-none relative z-0 px-1.5 py-1">
-        <div className="truncate font-semibold">{participantName}</div>
-        <div className="truncate opacity-90">
-          {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
-        </div>
-        {!isOtherCoaching && authorizationService && (
-          <div
-            className="truncate opacity-85"
-            style={{ fontSize: `${subFontSize}px` }}
-          >
-            {authorizationService}
-            {authorizationNumber ? ` · Auth ${authorizationNumber}` : ''}
-          </div>
+          }
+        }}
+        onMouseLeave={() => clearHoverPopup()}
+        className={`absolute select-none overflow-hidden rounded border text-left leading-snug shadow-sm ${
+          readOnly ? 'cursor-pointer' : 'touch-none'
+        } ${errorClass} ${isSelected ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-slate-900' : ''} ${
+          isDragging ? 'z-30 opacity-90 shadow-lg' : errorLevel === 'critical' ? '' : 'z-10 hover:z-20'
+        }`}
+        style={{
+          top: `${top}px`,
+          height: `${blockHeight}px`,
+          left: pos.left,
+          width: pos.width,
+          fontSize: `${fontSize}px`,
+          ...(useAccentStyle
+            ? isCoached
+              ? coachShiftStyle(accentColor)
+              : soloShiftStyle()
+            : undefined),
+        }}
+      >
+        {!readOnly && (
+          <>
+            <div className="absolute inset-x-0 top-0 z-10 h-2 cursor-ns-resize" aria-hidden />
+            <div className="absolute inset-x-0 bottom-0 z-10 h-2 cursor-ns-resize" aria-hidden />
+            <div
+              className="absolute inset-x-0 top-2 bottom-2 z-10 cursor-grab active:cursor-grabbing"
+              aria-hidden
+            />
+          </>
         )}
-        <div className="truncate opacity-80" style={{ fontSize: `${subFontSize}px` }}>
-          {isOtherCoaching
-            ? coachName || 'NO COACH'
-            : isCoached && coachName
-              ? coachName
-              : 'NO COACH'}
-          {coachPhone && (isOtherCoaching || (isCoached && coachName))
-            ? ` · ${coachPhone}`
-            : ''}
-        </div>
-        {site && (
-          <div
-            className="truncate opacity-70"
-            style={{ fontSize: `${siteFontSize}px` }}
-          >
-            {site}
-          </div>
-        )}
-        {participantPhone && !isOtherCoaching && (
-          <div
-            className="truncate opacity-70"
-            style={{ fontSize: `${siteFontSize}px` }}
-          >
-            {participantPhone}
-          </div>
-        )}
-        {hoursThisWeek !== undefined && (
-          <div
-            className="truncate tabular-nums opacity-80"
-            style={{ fontSize: `${detailFontSize}px` }}
-          >
-            Hours this week scheduled: {formatHoursValue(hoursThisWeek)}
-          </div>
-        )}
-        {authorizationHoursLines.map((line) => (
-          <div
-            key={line.label}
-            className={`truncate tabular-nums ${line.overLimit ? 'text-amber-300/95' : 'opacity-75'}`}
-            style={{ fontSize: `${detailFontSize}px` }}
-          >
-            {line.label}
-          </div>
-        ))}
-        {milestoneLabels.map((label) => (
-          <div
-            key={label}
-            className="truncate text-sky-300/90"
-            style={{ fontSize: `${detailFontSize}px` }}
-          >
-            {label}
-          </div>
-        ))}
-        {fullyScheduledLabel && (
-          <div
-            className="mt-0.5 flex items-start gap-1 font-medium text-emerald-400"
-            style={{ fontSize: `${errorFontSize}px` }}
-          >
-            <span className="shrink-0 leading-none" aria-hidden>
-              ✓
-            </span>
-            <span className="min-w-0 leading-tight drop-shadow-sm">{fullyScheduledLabel}</span>
-          </div>
-        )}
-        {errorLevel !== 'none' && errorSummary && (
-          <div
-            className="mt-0.5 truncate font-medium opacity-90"
-            style={{ fontSize: `${errorFontSize}px` }}
-          >
-            {errorSummary
-              .split('\n')
-              .filter((line) => line !== MULTI_SHIFT_DAY_MESSAGE)[0]}
-          </div>
-        )}
-        {multiShiftNotice && (
-          <div
-            className="mt-0.5 flex items-start gap-1 text-slate-400/90"
-            style={{ fontSize: `${errorFontSize}px` }}
-          >
-            <span className="shrink-0 font-bold leading-none text-slate-500">!</span>
-            <span className="min-w-0 leading-tight">{MULTI_SHIFT_DAY_MESSAGE}</span>
-          </div>
-        )}
+        <ShiftDetailContent {...detailProps} compact />
       </div>
-    </div>
+
+      {showHoverPopup && hoverPos && (
+        <ShiftHoverPopup
+          x={hoverPos.x}
+          y={hoverPos.y}
+          accentColor={accentColor}
+          isCoached={isCoached}
+          errorLevel={errorLevel}
+        >
+          <ShiftDetailContent {...detailProps} compact={false} />
+        </ShiftHoverPopup>
+      )}
+    </>
   )
 }
 
