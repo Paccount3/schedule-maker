@@ -625,8 +625,8 @@ export function Sidebar({
           )}
         </div>
 
-        <div className="shrink-0 border-b border-slate-800 p-3">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="flex min-h-0 shrink-0 flex-col border-b border-slate-800 p-3">
+          <div className="mb-2 flex shrink-0 items-center justify-between">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Coaches
             </h2>
@@ -639,7 +639,7 @@ export function Sidebar({
             </button>
             )}
           </div>
-          <div className="space-y-0.5">
+          <div className="max-h-64 space-y-0.5 overflow-y-auto">
             {regionCoaches.length === 0 ? (
               <p className="px-2 py-3 text-xs text-slate-600">No coaches in this region</p>
             ) : (

@@ -31,6 +31,10 @@ export default function App() {
   const scheduleTrackingReadyRef = useRef(false)
   const issueKeysRef = useRef<Set<string>>(new Set())
   const issueTrackingReadyRef = useRef(false)
+  const coachShiftVisibilityPrefRef = useRef<Map<string, boolean>>(new Map())
+  const coachAvailabilityPrefRef = useRef<Map<string, boolean>>(new Map())
+  const participantVisibilityPrefRef = useRef<Map<string, boolean>>(new Map())
+  const otherCoachingVisibilityPrefRef = useRef<Map<string, boolean>>(new Map())
 
   const [selectedAuthorizationByParticipant, setSelectedAuthorizationByParticipant] = useState<
     Record<string, string>
@@ -41,6 +45,10 @@ export default function App() {
     scheduleStatusRef.current.clear()
     issueTrackingReadyRef.current = false
     issueKeysRef.current.clear()
+    coachShiftVisibilityPrefRef.current.clear()
+    coachAvailabilityPrefRef.current.clear()
+    participantVisibilityPrefRef.current.clear()
+    otherCoachingVisibilityPrefRef.current.clear()
   }, [state.selectedRegionId])
 
   const weekDates = useMemo(() => getWeekDates(state.weekStart), [state.weekStart])
@@ -185,40 +193,49 @@ export default function App() {
   )
 
   useEffect(() => {
-    setVisibleCoachShiftIds((prev) => {
+    setVisibleCoachShiftIds(() => {
       const next = new Set<string>()
       for (const c of regionCoaches) {
-        if (prev.has(c.id)) next.add(c.id)
-        else next.add(c.id)
+        if (!coachShiftVisibilityPrefRef.current.has(c.id)) {
+          coachShiftVisibilityPrefRef.current.set(c.id, true)
+        }
+        if (coachShiftVisibilityPrefRef.current.get(c.id)) next.add(c.id)
       }
       return next
     })
-    setVisibleCoachIds((prev) => {
+    setVisibleCoachIds(() => {
       const next = new Set<string>()
       for (const c of regionCoaches) {
-        if (prev.has(c.id)) next.add(c.id)
+        if (!coachAvailabilityPrefRef.current.has(c.id)) {
+          coachAvailabilityPrefRef.current.set(c.id, false)
+        }
+        if (coachAvailabilityPrefRef.current.get(c.id)) next.add(c.id)
       }
       return next
     })
   }, [regionCoaches])
 
   useEffect(() => {
-    setVisibleParticipantIds((prev) => {
+    setVisibleParticipantIds(() => {
       const next = new Set<string>()
       for (const p of regionParticipants) {
-        if (prev.has(p.id)) next.add(p.id)
-        else next.add(p.id)
+        if (!participantVisibilityPrefRef.current.has(p.id)) {
+          participantVisibilityPrefRef.current.set(p.id, true)
+        }
+        if (participantVisibilityPrefRef.current.get(p.id)) next.add(p.id)
       }
       return next
     })
   }, [regionParticipants])
 
   useEffect(() => {
-    setVisibleOtherCoachingIds((prev) => {
+    setVisibleOtherCoachingIds(() => {
       const next = new Set<string>()
       for (const activity of regionOtherCoaching) {
-        if (prev.has(activity.id)) next.add(activity.id)
-        else next.add(activity.id)
+        if (!otherCoachingVisibilityPrefRef.current.has(activity.id)) {
+          otherCoachingVisibilityPrefRef.current.set(activity.id, true)
+        }
+        if (otherCoachingVisibilityPrefRef.current.get(activity.id)) next.add(activity.id)
       }
       return next
     })
@@ -279,8 +296,10 @@ export default function App() {
   const toggleCoachVisibility = (coachId: string) => {
     setVisibleCoachIds((prev) => {
       const next = new Set(prev)
-      if (next.has(coachId)) next.delete(coachId)
-      else next.add(coachId)
+      const makingVisible = !next.has(coachId)
+      if (makingVisible) next.add(coachId)
+      else next.delete(coachId)
+      coachAvailabilityPrefRef.current.set(coachId, makingVisible)
       return next
     })
   }
@@ -288,8 +307,10 @@ export default function App() {
   const toggleCoachShiftVisibility = (coachId: string) => {
     setVisibleCoachShiftIds((prev) => {
       const next = new Set(prev)
-      if (next.has(coachId)) next.delete(coachId)
-      else next.add(coachId)
+      const makingVisible = !next.has(coachId)
+      if (makingVisible) next.add(coachId)
+      else next.delete(coachId)
+      coachShiftVisibilityPrefRef.current.set(coachId, makingVisible)
       return next
     })
   }
@@ -297,8 +318,10 @@ export default function App() {
   const toggleOtherCoachingVisibility = (activityId: string) => {
     setVisibleOtherCoachingIds((prev) => {
       const next = new Set(prev)
-      if (next.has(activityId)) next.delete(activityId)
-      else next.add(activityId)
+      const makingVisible = !next.has(activityId)
+      if (makingVisible) next.add(activityId)
+      else next.delete(activityId)
+      otherCoachingVisibilityPrefRef.current.set(activityId, makingVisible)
       return next
     })
   }
@@ -306,8 +329,10 @@ export default function App() {
   const toggleParticipantVisibility = (participantId: string) => {
     setVisibleParticipantIds((prev) => {
       const next = new Set(prev)
-      if (next.has(participantId)) next.delete(participantId)
-      else next.add(participantId)
+      const makingVisible = !next.has(participantId)
+      if (makingVisible) next.add(participantId)
+      else next.delete(participantId)
+      participantVisibilityPrefRef.current.set(participantId, makingVisible)
       return next
     })
   }
