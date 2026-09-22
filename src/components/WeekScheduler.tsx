@@ -11,6 +11,7 @@ import {
   formatShiftConflictSummary,
   formatHoursValue,
   getParticipantHoursForWeek,
+  getOtherCoachingHoursForWeek,
   getShiftConflicts,
   getAuthorizationHoursDisplayLines,
   getShiftDisplayErrorLevel,
@@ -810,6 +811,18 @@ export function WeekScheduler({
                       shiftAuth && !isOtherCoaching
                         ? getAuthorizationHoursDisplayLines(shiftAuth, shiftsForEval)
                         : undefined
+                    const hoursThisWeek = isOtherCoaching
+                      ? activity
+                        ? getOtherCoachingHoursForWeek(activity.id, weekDates, shiftsForEval)
+                        : undefined
+                      : shiftAuth
+                        ? getParticipantHoursForWeek(
+                            shiftAuth.id,
+                            weekDates,
+                            shiftsForEval,
+                            shiftAuth,
+                          ).totalWorkScheduled
+                        : undefined
 
                     return (
                       <ShiftBlock
@@ -845,6 +858,7 @@ export function WeekScheduler({
                         authorizationHoursLines={authorizationHoursLines}
                         fullyScheduledLabel={fullyScheduledLabel}
                         errorSummary={errorSummary}
+                        hoursThisWeek={hoursThisWeek}
                         readOnly={!canEdit}
                         onEdit={() => {
                           if (mobileMode || !canEdit) {

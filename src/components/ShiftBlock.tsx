@@ -16,6 +16,7 @@ import {
 
 import {
   MULTI_SHIFT_DAY_MESSAGE,
+  formatHoursValue,
   type AuthorizationHoursDisplayLine,
   type ShiftErrorLevel,
 } from '../lib/scheduling'
@@ -46,6 +47,7 @@ interface ShiftBlockProps {
   authorizationHoursLines?: AuthorizationHoursDisplayLine[]
   fullyScheduledLabel?: string
   errorSummary?: string
+  hoursThisWeek?: number
   onEdit: () => void
   onDragStart: () => void
   onDragPreview: (preview: ShiftDragPreview) => void
@@ -79,6 +81,7 @@ export function ShiftBlock({
   authorizationHoursLines = [],
   fullyScheduledLabel,
   errorSummary,
+  hoursThisWeek,
   onEdit,
   onDragStart,
   onDragPreview,
@@ -291,6 +294,14 @@ export function ShiftBlock({
             style={{ fontSize: `${siteFontSize}px` }}
           >
             {participantPhone}
+          </div>
+        )}
+        {hoursThisWeek !== undefined && (
+          <div
+            className="truncate tabular-nums opacity-80"
+            style={{ fontSize: `${detailFontSize}px` }}
+          >
+            Hours this week scheduled: {formatHoursValue(hoursThisWeek)}
           </div>
         )}
         {authorizationHoursLines.map((line) => (

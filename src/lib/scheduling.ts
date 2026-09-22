@@ -434,13 +434,13 @@ export function getAuthorizationHoursDisplayLines(
 
   if (!isCoachingOnlyAuthorization(authorization)) {
     lines.push({
-      label: `${formatHoursValue(totals.totalWork)}/${formatHoursValue(authorization.workingHours)} working hours`,
+      label: `${formatHoursValue(totals.totalWork)}/${formatHoursValue(authorization.workingHours)} working hours scheduled`,
       overLimit: totals.totalWork > authorization.workingHours,
     })
   }
 
   lines.push({
-    label: `${formatHoursValue(totals.totalCoached)}/${formatHoursValue(authorization.coachingHours)} coaching hours`,
+    label: `${formatHoursValue(totals.totalCoached)}/${formatHoursValue(authorization.coachingHours)} coaching hours scheduled`,
     overLimit: totals.totalCoached > authorization.coachingHours,
   })
 
