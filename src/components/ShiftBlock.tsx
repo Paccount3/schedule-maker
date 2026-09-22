@@ -25,7 +25,7 @@ import {
 const DRAG_THRESHOLD_PX = 4
 const POPUP_OFFSET = 14
 const POPUP_WIDTH = 280
-const HOVER_DELAY_MS = 450
+const HOVER_DELAY_MS = 700
 
 interface ShiftBlockProps {
   shift: Shift
@@ -52,6 +52,7 @@ interface ShiftBlockProps {
   fullyScheduledLabel?: string
   errorSummary?: string
   hoursThisWeek?: number
+  hoursRemainingAfterShift?: number
   onEdit: () => void
   onDragStart: () => void
   onDragPreview: (preview: ShiftDragPreview) => void
@@ -74,6 +75,7 @@ type ShiftDetailContentProps = {
   authorizationNumber?: string
   authorizationHoursLines: AuthorizationHoursDisplayLine[]
   hoursThisWeek?: number
+  hoursRemainingAfterShift?: number
   milestoneLabels: string[]
   fullyScheduledLabel?: string
   errorLevel: ShiftErrorLevel
@@ -100,6 +102,7 @@ function ShiftDetailContent({
   authorizationNumber,
   authorizationHoursLines,
   hoursThisWeek,
+  hoursRemainingAfterShift,
   milestoneLabels,
   fullyScheduledLabel,
   errorLevel,
@@ -174,6 +177,30 @@ function ShiftDetailContent({
           style={compact ? { fontSize: `${detailFontSize}px` } : undefined}
         >
           Hours this week scheduled: {formatHoursValue(hoursThisWeek)}
+        </div>
+      )}
+      {hoursRemainingAfterShift !== undefined && (
+        <div
+          className={
+            compact
+              ? `truncate tabular-nums ${
+                  hoursRemainingAfterShift <= 4
+                    ? 'text-red-300/95'
+                    : hoursRemainingAfterShift <= 10
+                      ? 'text-amber-300/95'
+                      : 'opacity-80'
+                }`
+              : `text-sm tabular-nums ${
+                  hoursRemainingAfterShift <= 4
+                    ? 'text-red-300'
+                    : hoursRemainingAfterShift <= 10
+                      ? 'text-amber-300'
+                      : 'text-slate-200'
+                }`
+          }
+          style={compact ? { fontSize: `${detailFontSize}px` } : undefined}
+        >
+          Hours remaining after this shift: {formatHoursValue(hoursRemainingAfterShift)}
         </div>
       )}
       {authorizationHoursLines.map((line) => (
@@ -339,6 +366,7 @@ export function ShiftBlock({
   fullyScheduledLabel,
   errorSummary,
   hoursThisWeek,
+  hoursRemainingAfterShift,
   onEdit,
   onDragStart,
   onDragPreview,
@@ -415,6 +443,7 @@ export function ShiftBlock({
     authorizationNumber,
     authorizationHoursLines,
     hoursThisWeek,
+    hoursRemainingAfterShift,
     milestoneLabels,
     fullyScheduledLabel,
     errorLevel,

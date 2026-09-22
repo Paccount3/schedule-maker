@@ -660,6 +660,43 @@ export function formatHoursValue(hours: number): string {
   return String(Math.round(hours * 10) / 10)
 }
 
+/**
+ * Hours left on the authorization after this shift in chronological order.
+ * Uses working hours for normal services, coaching hours for JC.
+ * Fully pre-scheduled auths still show higher remaining on early shifts
+ * and lower remaining on later ones.
+ */
+export function getHoursRemainingAfterShift(
+  authorization: Authorization,
+  shiftId: string,
+  shifts: Shift[],
+): number | undefined {
+  const coachingOnly = isCoachingOnlyAuthorization(authorization)
+  const targetTotal = coachingOnly
+    ? authorization.coachingHours
+    : authorization.workingHours
+  if (targetTotal <= 0) return undefined
+
+  const ordered = shifts
+    .filter((s) => s.authorizationId === authorization.id)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes)
+
+  let cumulative = 0
+  for (const s of ordered) {
+    const hours = durationHours(s.startMinutes, s.endMinutes)
+    if (coachingOnly) {
+      if (s.type === 'coached') cumulative += hours
+    } else {
+      cumulative += hours
+    }
+    if (s.id === shiftId) {
+      return Math.max(0, Math.round((targetTotal - cumulative) * 10) / 10)
+    }
+  }
+
+  return undefined
+}
+
 export function getShiftMilestoneLabels(
   authorization: Authorization,
   shiftId: string,
