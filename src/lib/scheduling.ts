@@ -6,7 +6,7 @@ import {
   isAuthorizationSchedulable,
   isCoachingOnlyAuthorization,
 } from './authorizations'
-import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, SLOT_MINUTES, toDateInput, todayDateInput } from './time'
+import { addDays, dayOfWeekFromDate, durationHours, formatMinutesRange, getWeekDates, parseDateInput, SLOT_MINUTES, toDateInput, todayDateInput, weekStartForDate } from './time'
 
 export interface ShiftConflict {
   type:
@@ -68,11 +68,65 @@ export function shiftUsesCoach(shift: Shift): boolean {
   )
 }
 
+/** Did-not-occur shifts stay visible but never count toward hours or wage totals. */
+export function shiftCountsTowardHours(shift: Shift): boolean {
+  return !shift.didNotOccur
+}
+
+/**
+ * Other coaching activities are scoped to a weekOf. Shifts whose dates fall outside
+ * that week are orphans (e.g. from copy-previous-week) — hidden in the UI but still
+ * in state. They must not create "already booked" conflicts or count as coach time.
+ */
+export function isOtherCoachingShiftInScopeForDate(
+  shift: Shift,
+  activities: OtherCoachingActivity[],
+): boolean {
+  if (shift.type !== 'other-coaching') return true
+  if (!shift.otherCoachingActivityId) return false
+  // Callers that omit activities keep legacy behavior (all other-coaching counts).
+  if (activities.length === 0) return true
+  const activity = activities.find((a) => a.id === shift.otherCoachingActivityId)
+  if (!activity) return false
+  if (!activity.weekOf) return true
+  return activity.weekOf === weekStartForDate(shift.date)
+}
+
+/** Whether this shift should occupy the coach on the calendar for conflict checks. */
+export function shiftBlocksCoachTime(
+  shift: Shift,
+  activities: OtherCoachingActivity[] = [],
+): boolean {
+  if (!shiftCountsTowardHours(shift) || !shiftUsesCoach(shift)) return false
+  if (shift.type === 'other-coaching') {
+    return isOtherCoachingShiftInScopeForDate(shift, activities)
+  }
+  return true
+}
+
+function coachOverlapLabel(
+  shift: Shift,
+  participants: Participant[],
+  activities: OtherCoachingActivity[],
+): string {
+  if (shift.type === 'other-coaching') {
+    const activity = shift.otherCoachingActivityId
+      ? activities.find((a) => a.id === shift.otherCoachingActivityId)
+      : undefined
+    return activity?.name?.trim() || 'another other-coaching assignment'
+  }
+  const participant = shift.participantId
+    ? participants.find((p) => p.id === shift.participantId)
+    : undefined
+  return participant?.name?.trim() || 'another shift'
+}
+
 export function getOtherCoachingHoursForWeek(
   activityId: string,
   weekDates: string[],
   shifts: Shift[],
   excludeShiftId?: string,
+  activities: OtherCoachingActivity[] = [],
 ): number {
   return shifts
     .filter(
@@ -80,7 +134,9 @@ export function getOtherCoachingHoursForWeek(
         s.id !== excludeShiftId &&
         s.type === 'other-coaching' &&
         s.otherCoachingActivityId === activityId &&
-        weekDates.includes(s.date),
+        weekDates.includes(s.date) &&
+        shiftCountsTowardHours(s) &&
+        isOtherCoachingShiftInScopeForDate(s, activities),
     )
     .reduce((sum, s) => sum + durationHours(s.startMinutes, s.endMinutes), 0)
 }
@@ -111,6 +167,7 @@ export function participantHasShiftOnDate(
       s.participantId === participantId &&
       s.date === date &&
       s.id !== excludeShiftId &&
+      shiftCountsTowardHours(s) &&
       (authorizationId === undefined || s.authorizationId === authorizationId),
   )
 }
@@ -122,7 +179,9 @@ export function getShiftConflicts(
   coach: Coach | undefined,
   allShifts: Shift[],
   dayOfWeek: DayOfWeek,
-  weekDates: string[],
+  _weekDates: string[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
+  participants: Participant[] = [],
 ): ShiftConflict[] {
   const conflicts: ShiftConflict[] = []
 
@@ -165,6 +224,7 @@ export function getShiftConflicts(
     if (authorization && shift.authorizationId) {
       const totalHours = getAuthorizationHoursTotal(shift.authorizationId, allShifts)
       if (
+        shiftCountsTowardHours(shift) &&
         !isCoachingOnlyAuthorization(authorization) &&
         totalHours.totalWork > authorization.workingHours
       ) {
@@ -174,6 +234,7 @@ export function getShiftConflicts(
         })
       }
       if (
+        shiftCountsTowardHours(shift) &&
         shift.type === 'coached' &&
         totalHours.totalCoached > authorization.coachingHours
       ) {
@@ -185,7 +246,7 @@ export function getShiftConflicts(
     }
   }
 
-  if (shiftUsesCoach(shift) && shift.coachId && coach) {
+  if (shiftBlocksCoachTime(shift, otherCoachingActivities) && shift.coachId && coach) {
     // Availability is a live weekly pattern — only validate it for today/future
     // so changing weekends later does not flag historical shifts.
     if (shift.date >= todayDateInput()) {
@@ -193,12 +254,12 @@ export function getShiftConflicts(
       if (!avail) {
         conflicts.push({
           type: 'coach_unavailable',
-          message: `${coach.name} is not available on this day`,
+          message: `${coach.name || 'Coach'} is not available on this day`,
         })
       } else if (shift.startMinutes < avail.startMinutes || shift.endMinutes > avail.endMinutes) {
         conflicts.push({
           type: 'outside_coach_hours',
-          message: `${coach.name} is only available ${formatMinutesRange(avail.startMinutes, avail.endMinutes)} on this day`,
+          message: `${coach.name || 'Coach'} is only available ${formatMinutesRange(avail.startMinutes, avail.endMinutes)} on this day`,
         })
       }
     }
@@ -208,18 +269,31 @@ export function getShiftConflicts(
         s.id !== shift.id &&
         s.coachId === shift.coachId &&
         s.date === shift.date &&
+        shiftBlocksCoachTime(s, otherCoachingActivities) &&
         s.startMinutes < shift.endMinutes &&
         s.endMinutes > shift.startMinutes,
     )
     if (overlapping.length > 0) {
+      const withLabel = coachOverlapLabel(
+        overlapping[0],
+        participants,
+        otherCoachingActivities,
+      )
       conflicts.push({
         type: 'coach_double_booked',
-        message: `${coach.name} is already booked during this time`,
+        message: `${coach.name || 'Coach'} is already booked during this time (with ${withLabel})`,
       })
     }
 
+    const shiftWeekDates = getWeekDates(weekStartForDate(shift.date))
     const shiftHours = durationHours(shift.startMinutes, shift.endMinutes)
-    const weekHours = getCoachHoursForWeek(coach.id, weekDates, allShifts, shift.id)
+    const weekHours = getCoachHoursForWeek(
+      coach.id,
+      shiftWeekDates,
+      allShifts,
+      shift.id,
+      otherCoachingActivities,
+    )
     if (weekHours + shiftHours > COACH_MAX_HOURS) {
       conflicts.push({
         type: 'coach_over_hours',
@@ -253,6 +327,7 @@ export function getParticipantHoursForWeek(
   let coachedScheduled = 0
 
   for (const shift of authShifts) {
+    if (!shiftCountsTowardHours(shift)) continue
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     if (shift.type === 'coached') {
       coachedScheduled += hours
@@ -285,6 +360,7 @@ export function getAuthorizationHoursTotal(
   let totalCoached = 0
 
   for (const shift of shifts.filter((s) => s.authorizationId === authorizationId)) {
+    if (!shiftCountsTowardHours(shift)) continue
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     totalWork += hours
     if (shift.type === 'coached') totalCoached += hours
@@ -302,6 +378,7 @@ export function getParticipantHoursTotal(
   let totalCoached = 0
 
   for (const shift of shifts.filter((s) => s.participantId === participantId)) {
+    if (!shiftCountsTowardHours(shift)) continue
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     totalWork += hours
     if (shift.type === 'coached') totalCoached += hours
@@ -322,6 +399,7 @@ export function getParticipantHoursInRange(
   for (const shift of shifts) {
     if (shift.participantId !== participantId) continue
     if (shift.date < startDate || shift.date > endDate) continue
+    if (!shiftCountsTowardHours(shift)) continue
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     totalWork += hours
     if (shift.type === 'coached') totalCoached += hours
@@ -343,6 +421,7 @@ export function getAuthorizationHoursInRange(
   for (const shift of shifts) {
     if (shift.authorizationId !== authorizationId) continue
     if (shift.date < startDate || shift.date > endDate) continue
+    if (!shiftCountsTowardHours(shift)) continue
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     totalWork += hours
     if (shift.type === 'coached') totalCoached += hours
@@ -362,6 +441,7 @@ export function getCoachHoursInRange(
   for (const shift of shifts) {
     if (shift.coachId !== coachId || shift.type !== 'coached') continue
     if (shift.date < startDate || shift.date > endDate) continue
+    if (!shiftCountsTowardHours(shift)) continue
     totalCoached += durationHours(shift.startMinutes, shift.endMinutes)
   }
 
@@ -369,7 +449,7 @@ export function getCoachHoursInRange(
 }
 
 export function isCoachingOnlyParticipant(participant: Participant): boolean {
-  return participant.authorizations.some((a) => a.service === 'JC')
+  return participant.authorizations.some((a) => isCoachingOnlyAuthorization(a))
 }
 
 /** Weeks ahead of the viewed week to show authorizations that have not started yet */
@@ -464,6 +544,7 @@ export function authorizationHasAuthIssue(
     (s) =>
       s.participantId === participantId &&
       s.authorizationId === authorization.id &&
+      shiftCountsTowardHours(s) &&
       (s.date < authorization.authStart ||
         s.date > getAuthorizationEffectiveEnd(authorization)),
   )
@@ -625,6 +706,8 @@ export function collectSchedulingIssueKeys(
       shifts,
       dayKey,
       weekDates,
+      otherCoachingActivities,
+      participants,
     )
     const level = getShiftDisplayErrorLevel(conflicts)
     if (level === 'warning' || level === 'critical') {
@@ -648,7 +731,13 @@ export function collectSchedulingIssueKeys(
   }
 
   for (const coach of coaches) {
-    for (const message of getCoachSidebarIssueMessages(coach, weekDates, shifts, participants)) {
+    for (const message of getCoachSidebarIssueMessages(
+      coach,
+      weekDates,
+      shifts,
+      participants,
+      otherCoachingActivities,
+    )) {
       keys.add(`coach:${coach.id}:${message}`)
     }
   }
@@ -662,9 +751,10 @@ export function formatHoursValue(hours: number): string {
 
 /**
  * Hours left on the authorization after this shift in chronological order.
- * Uses working hours for normal services, coaching hours for JC.
- * Fully pre-scheduled auths still show higher remaining on early shifts
- * and lower remaining on later ones.
+ * Uses working hours for normal services, coaching hours for coaching-only
+ * services (JC, Interview Prep, Job Exploration, Orientation, Other Module,
+ * Other Service). Fully pre-scheduled auths still show higher remaining on
+ * early shifts and lower remaining on later ones.
  */
 export function getHoursRemainingAfterShift(
   authorization: Authorization,
@@ -678,7 +768,7 @@ export function getHoursRemainingAfterShift(
   if (targetTotal <= 0) return undefined
 
   const ordered = shifts
-    .filter((s) => s.authorizationId === authorization.id)
+    .filter((s) => s.authorizationId === authorization.id && shiftCountsTowardHours(s))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes)
 
   let cumulative = 0
@@ -704,7 +794,7 @@ export function getShiftMilestoneLabels(
 ): string[] {
   const coachingOnly = isCoachingOnlyAuthorization(authorization)
   const ordered = shifts
-    .filter((s) => s.authorizationId === authorization.id)
+    .filter((s) => s.authorizationId === authorization.id && shiftCountsTowardHours(s))
     .sort((a, b) => a.date.localeCompare(b.date) || a.startMinutes - b.startMinutes)
 
   let cumWork = 0
@@ -780,8 +870,9 @@ export function coachHasWeeklyHoursIssue(
   coach: Coach,
   weekDates: string[],
   shifts: Shift[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): boolean {
-  return getCoachHoursForWeek(coach.id, weekDates, shifts) > COACH_MAX_HOURS
+  return getCoachHoursForWeek(coach.id, weekDates, shifts, undefined, otherCoachingActivities) > COACH_MAX_HOURS
 }
 
 export function getCoachSidebarIssueMessages(
@@ -789,6 +880,7 @@ export function getCoachSidebarIssueMessages(
   weekDates: string[],
   shifts: Shift[],
   participants: Participant[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): string[] {
   const messages: string[] = []
   const seen = new Set<string>()
@@ -800,8 +892,8 @@ export function getCoachSidebarIssueMessages(
     }
   }
 
-  const summary = getCoachHoursSummary(coach, weekDates, shifts)
-  if (coachHasWeeklyHoursIssue(coach, weekDates, shifts)) {
+  const summary = getCoachHoursSummary(coach, weekDates, shifts, undefined, otherCoachingActivities)
+  if (coachHasWeeklyHoursIssue(coach, weekDates, shifts, otherCoachingActivities)) {
     add('Coaches cannot exceed 40 hours')
   }
   if (summary.max > 0 && summary.assigned > summary.max) {
@@ -810,7 +902,10 @@ export function getCoachSidebarIssueMessages(
 
   const participantMap = new Map(participants.map((p) => [p.id, p]))
   const coachShifts = shifts.filter(
-    (s) => s.coachId === coach.id && shiftUsesCoach(s) && weekDates.includes(s.date),
+    (s) =>
+      s.coachId === coach.id &&
+      shiftBlocksCoachTime(s, otherCoachingActivities) &&
+      weekDates.includes(s.date),
   )
 
   for (const shift of coachShifts) {
@@ -828,6 +923,8 @@ export function getCoachSidebarIssueMessages(
       shifts,
       dayKey,
       weekDates,
+      otherCoachingActivities,
+      participants,
     )
     for (const conflict of conflicts) {
       switch (conflict.type) {
@@ -855,13 +952,14 @@ export function getCoachHoursForWeek(
   weekDates: string[],
   shifts: Shift[],
   excludeShiftId?: string,
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): number {
   return shifts
     .filter(
       (s) =>
         s.id !== excludeShiftId &&
         s.coachId === coachId &&
-        shiftUsesCoach(s) &&
+        shiftBlocksCoachTime(s, otherCoachingActivities) &&
         weekDates.includes(s.date),
     )
     .reduce((sum, s) => sum + durationHours(s.startMinutes, s.endMinutes), 0)
@@ -879,8 +977,15 @@ export function getCoachHoursSummary(
   weekDates: string[],
   shifts: Shift[],
   excludeShiftId?: string,
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): CoachHoursSummary {
-  const assigned = getCoachHoursForWeek(coach.id, weekDates, shifts, excludeShiftId)
+  const assigned = getCoachHoursForWeek(
+    coach.id,
+    weekDates,
+    shifts,
+    excludeShiftId,
+    otherCoachingActivities,
+  )
   const max = getCoachMaxHoursForWeek(coach, weekDates)
   const percentage = max > 0 ? Math.round((assigned / max) * 100) : 0
   return {
@@ -906,6 +1011,7 @@ export function getAvailableCoaches(
   shifts: Shift[],
   weekDates: string[],
   excludeShiftId?: string,
+  otherCoachingActivities: OtherCoachingActivity[] = [],
 ): CoachSlot[] {
   const shiftHours = durationHours(startMinutes, endMinutes)
 
@@ -922,13 +1028,20 @@ export function getAvailableCoaches(
         s.id !== excludeShiftId &&
         s.coachId === coach.id &&
         s.date === date &&
+        shiftBlocksCoachTime(s, otherCoachingActivities) &&
         s.startMinutes < endMinutes &&
         s.endMinutes > startMinutes,
     )
     if (conflict) {
       return { coach, available: false, reason: 'Already booked' }
     }
-    const weekHours = getCoachHoursForWeek(coach.id, weekDates, shifts, excludeShiftId)
+    const weekHours = getCoachHoursForWeek(
+      coach.id,
+      weekDates,
+      shifts,
+      excludeShiftId,
+      otherCoachingActivities,
+    )
     if (weekHours + shiftHours > COACH_MAX_HOURS) {
       return { coach, available: false, reason: `Would exceed ${COACH_MAX_HOURS}h/week` }
     }
@@ -962,18 +1075,9 @@ export function buildCopiedShiftsFromPreviousWeek(
     if (!prevWeek.includes(shift.date)) continue
 
     const newDate = dateMap.get(shift.date)!
-    if (shift.type === 'other-coaching' && shift.otherCoachingActivityId) {
-      copied.push({
-        otherCoachingActivityId: shift.otherCoachingActivityId,
-        date: newDate,
-        startMinutes: shift.startMinutes,
-        endMinutes: shift.endMinutes,
-        type: shift.type,
-        coachId: shift.coachId,
-        notes: shift.notes,
-      })
-      continue
-    }
+    // Other coaching is week-scoped via activity.weekOf — copying would create
+    // orphan shifts that stay hidden but still trip double-book conflicts.
+    if (shift.type === 'other-coaching') continue
 
     if (!shift.participantId) continue
     const participant = participants.find((p) => p.id === shift.participantId)

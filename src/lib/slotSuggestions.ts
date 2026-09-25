@@ -1,10 +1,10 @@
-import type { Authorization, Coach, Participant, Shift } from '../types'
+import type { Authorization, Coach, OtherCoachingActivity, Participant, Shift } from '../types'
 import { getAuthorizationEffectiveEnd, isAuthorizationSchedulable } from './authorizations'
 import {
   COACH_MAX_HOURS,
   getCoachHoursForWeek,
   getCoachMaxHoursForWeek,
-  shiftUsesCoach,
+  shiftBlocksCoachTime,
 } from './scheduling'
 import {
   dayOfWeekFromDate,
@@ -108,15 +108,27 @@ function participantBookedDates(
   extraDates: string[] = [],
 ): Set<string> {
   const dates = new Set(
-    shifts.filter((s) => s.participantId === participantId).map((s) => s.date),
+    shifts
+      .filter((s) => s.participantId === participantId && !s.didNotOccur)
+      .map((s) => s.date),
   )
   for (const d of extraDates) dates.add(d)
   return dates
 }
 
-function coachBookedOnDay(coachId: string, date: string, shifts: Shift[]): Interval[] {
+function coachBookedOnDay(
+  coachId: string,
+  date: string,
+  shifts: Shift[],
+  activities: OtherCoachingActivity[] = [],
+): Interval[] {
   return shifts
-    .filter((s) => s.coachId === coachId && s.date === date && shiftUsesCoach(s))
+    .filter(
+      (s) =>
+        s.coachId === coachId &&
+        s.date === date &&
+        shiftBlocksCoachTime(s, activities),
+    )
     .map((s) => ({ start: s.startMinutes, end: s.endMinutes }))
 }
 

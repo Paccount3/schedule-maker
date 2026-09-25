@@ -8,6 +8,16 @@ import type {
 import { DEFAULT_PARTICIPANT_AUTH_NUMBER } from '../types'
 import { defaultParticipantAuthRange, generateId, parseDateInput } from './time'
 
+/** Services with coaching hours only (no working / wage hours). */
+export const COACHING_ONLY_SERVICES: readonly ParticipantService[] = [
+  'JC',
+  'Interview Prep',
+  'Job Exploration',
+  'Orientation',
+  'Other Module',
+  'Other Service',
+]
+
 export const AUTHORIZATION_STATUS_LABELS: Record<AuthorizationStatus, string> = {
   active: 'Active',
   closed_early: 'Closed early',
@@ -54,20 +64,25 @@ export function createEmptyAuthorization(
   fromDate = new Date(),
 ): Authorization {
   const { authStart, authEnd } = defaultParticipantAuthRange(fromDate)
+  const coachingOnly = COACHING_ONLY_SERVICES.includes(service)
   return {
     id: generateId(),
     service,
     authNumber: DEFAULT_PARTICIPANT_AUTH_NUMBER,
     authStart,
     authEnd,
-    workingHours: 40,
+    workingHours: coachingOnly ? 0 : 40,
     coachingHours: 20,
     status: 'active',
   }
 }
 
+export function isCoachingOnlyService(service: ParticipantService): boolean {
+  return COACHING_ONLY_SERVICES.includes(service)
+}
+
 export function isCoachingOnlyAuthorization(auth: Authorization): boolean {
-  return auth.service === 'JC'
+  return isCoachingOnlyService(auth.service)
 }
 
 export function isAuthorizationSchedulable(auth: Authorization): boolean {
@@ -129,6 +144,7 @@ export function migrateParticipantRecord(
       regionId: raw.regionId,
       name: raw.name,
       phone: raw.phone ?? '',
+      counselorName: raw.counselorName ?? '',
       site: raw.site,
       siteContact: raw.siteContact ?? '',
       authorizations: raw.authorizations.map(normalizeAuthorization),
@@ -143,6 +159,7 @@ export function migrateParticipantRecord(
     regionId: raw.regionId,
     name: raw.name,
     phone: raw.phone ?? '',
+    counselorName: raw.counselorName ?? '',
     site: raw.site,
     siteContact: raw.siteContact ?? '',
     authorizations: [

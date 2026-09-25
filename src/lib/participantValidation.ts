@@ -60,6 +60,7 @@ export function validateParticipant(participant: Participant): Record<string, st
 
   if (!participant.name.trim()) errors.name = 'Name is required'
   if (!participant.phone.trim()) errors.phone = 'Phone is required'
+  if (!participant.counselorName.trim()) errors.counselorName = 'Counselor name is required'
   if (!participant.site.trim()) errors.site = 'Work site is required'
   if (!participant.siteContact.trim()) errors.siteContact = 'Site contact is required'
   if (!participant.bestAddressForChecks.trim()) {

@@ -766,12 +766,16 @@ export function WeekScheduler({
 
                     const original = regionShifts.find((s) => s.id === shift.id)!
                     const { top, height } = blockLayout
-                    const coach = shift.coachId ? coachMap.get(shift.coachId) : undefined
                     const isOtherCoaching = shift.type === 'other-coaching'
-                    const isCoached = shift.type === 'coached' && !!coach
                     const activity = shift.otherCoachingActivityId
                       ? otherCoachingMap.get(shift.otherCoachingActivityId)
                       : undefined
+                    const coach = shift.coachId
+                      ? coachMap.get(shift.coachId)
+                      : isOtherCoaching && activity?.coachId
+                        ? coachMap.get(activity.coachId)
+                        : undefined
+                    const isCoached = shift.type === 'coached' && !!coach
                     const p = shift.participantId ? participantMap.get(shift.participantId) : undefined
                     const isSelected =
                       shift.participantId === selectedParticipantId ||
@@ -793,6 +797,8 @@ export function WeekScheduler({
                       shiftsForEval,
                       dayKey,
                       weekDates,
+                      state.otherCoachingActivities,
+                      state.participants,
                     )
                     const errorLevel = getShiftDisplayErrorLevel(conflicts)
                     const multiShiftNotice = hasMultiShiftDayNotice(conflicts)
@@ -812,22 +818,24 @@ export function WeekScheduler({
                       shiftAuth && !isOtherCoaching
                         ? getAuthorizationHoursDisplayLines(shiftAuth, shiftsForEval)
                         : undefined
-                    const hoursThisWeek = isOtherCoaching
-                      ? activity
-                        ? getOtherCoachingHoursForWeek(activity.id, weekDates, shiftsForEval)
-                        : undefined
-                      : shiftAuth
-                        ? getParticipantHoursForWeek(
-                            shiftAuth.id,
-                            weekDates,
-                            shiftsForEval,
-                            shiftAuth,
-                          ).totalWorkScheduled
-                        : undefined
+                    const hoursThisWeek = shift.didNotOccur
+                      ? undefined
+                      : isOtherCoaching
+                        ? activity
+                          ? getOtherCoachingHoursForWeek(activity.id, weekDates, shiftsForEval)
+                          : undefined
+                        : shiftAuth
+                          ? getParticipantHoursForWeek(
+                              shiftAuth.id,
+                              weekDates,
+                              shiftsForEval,
+                              shiftAuth,
+                            ).totalWorkScheduled
+                          : undefined
                     const hoursRemainingAfterShift =
-                      shiftAuth && !isOtherCoaching
-                        ? getHoursRemainingAfterShift(shiftAuth, shift.id, shiftsForEval)
-                        : undefined
+                      shift.didNotOccur || !shiftAuth || isOtherCoaching
+                        ? undefined
+                        : getHoursRemainingAfterShift(shiftAuth, shift.id, shiftsForEval)
 
                     return (
                       <ShiftBlock
@@ -841,6 +849,11 @@ export function WeekScheduler({
                           isOtherCoaching ? activity?.name || 'Other coaching' : p?.name || 'Participant'
                         }
                         participantPhone={!isOtherCoaching ? p?.phone : undefined}
+                        counselorName={
+                          !isOtherCoaching && p?.counselorName?.trim()
+                            ? p.counselorName.trim()
+                            : undefined
+                        }
                         site={isOtherCoaching ? activity?.notes : p?.site}
                         accentColor={
                           coach?.color ?? (isCoached || isOtherCoaching ? '#64748b' : '#64748b')
@@ -876,6 +889,9 @@ export function WeekScheduler({
                                   : p?.name || 'Participant',
                                 coachName: coach?.name,
                                 coachPhone: coach?.phone || undefined,
+                                counselorName: !isOtherCoaching
+                                  ? p?.counselorName || undefined
+                                  : undefined,
                                 site: isOtherCoaching ? undefined : p?.site,
                                 phone: !isOtherCoaching ? p?.phone : undefined,
                                 service: !isOtherCoaching ? shiftAuth?.service : undefined,
@@ -914,6 +930,17 @@ export function WeekScheduler({
                             e.preventDefault()
                             return
                           }
+                          const didNotOccurItem = {
+                            label: original.didNotOccur
+                              ? 'Clear Did Not Occur'
+                              : 'Mark Did Not Occur',
+                            onClick: () => {
+                              updateShift({
+                                ...original,
+                                didNotOccur: !original.didNotOccur,
+                              })
+                            },
+                          }
                           if (isOtherCoaching) {
                             openContextMenu(e, [
                               {
@@ -923,6 +950,7 @@ export function WeekScheduler({
                                   playSound('copy')
                                 },
                               },
+                              didNotOccurItem,
                               {
                                 label: 'Delete Shift',
                                 onClick: () => {
@@ -936,7 +964,7 @@ export function WeekScheduler({
                           openContextMenu(e, [
                             {
                               label: 'Change to Coached Shift',
-                              disabled: original.type === 'coached',
+                              disabled: original.type === 'coached' || !!original.didNotOccur,
                               onClick: () => {
                                 setIsNewShift(false)
                                 playSound('open')
@@ -945,14 +973,14 @@ export function WeekScheduler({
                             },
                             {
                               label: 'Change to Solo Shift',
-                              disabled: original.type === 'solo',
+                              disabled: original.type === 'solo' || !!original.didNotOccur,
                               onClick: () => {
                                 updateShift({ ...original, type: 'solo', coachId: undefined })
                               },
                             },
                             {
                               label: 'Split Shift for Partial Coverage',
-                              disabled: !canSplit,
+                              disabled: !canSplit || !!original.didNotOccur,
                               onClick: () => {
                                 const split = splitShiftForPartialCoverage(original)
                                 if (!split) return
@@ -968,6 +996,7 @@ export function WeekScheduler({
                                 playSound('copy')
                               },
                             },
+                            didNotOccurItem,
                             {
                               label: 'Delete Shift',
                               onClick: () => {

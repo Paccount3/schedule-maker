@@ -7,6 +7,7 @@ export type ShiftDetails = {
   subtitle?: string
   coachName?: string
   coachPhone?: string
+  counselorName?: string
   site?: string
   phone?: string
   service?: string
@@ -14,6 +15,7 @@ export type ShiftDetails = {
   notes?: string
   timeLabel: string
   dateLabel: string
+  didNotOccur?: boolean
 }
 
 interface ShiftDetailsSheetProps {
@@ -51,6 +53,16 @@ export function ShiftDetailsSheet({ details, onClose }: ShiftDetailsSheetProps) 
         </div>
 
         <dl className="space-y-3 text-sm">
+          {details.didNotOccur && (
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Status
+              </dt>
+              <dd className="mt-0.5 font-semibold uppercase tracking-wide text-slate-300">
+                Did not occur
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">When</dt>
             <dd className="mt-0.5 text-slate-200">
@@ -75,6 +87,14 @@ export function ShiftDetailsSheet({ details, onClose }: ShiftDetailsSheetProps) 
                   {details.coachPhone}
                 </a>
               </dd>
+            </div>
+          )}
+          {details.counselorName && (
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Counselor
+              </dt>
+              <dd className="mt-0.5 text-slate-200">{details.counselorName}</dd>
             </div>
           )}
           {details.service && (
@@ -123,6 +143,7 @@ export function buildShiftDetails(params: {
   title: string
   coachName?: string
   coachPhone?: string
+  counselorName?: string
   site?: string
   phone?: string
   service?: string
@@ -136,6 +157,7 @@ export function buildShiftDetails(params: {
     subtitle: params.isOtherCoaching ? 'Other coaching assignment' : undefined,
     coachName: params.coachName,
     coachPhone: params.coachPhone,
+    counselorName: params.counselorName,
     site: params.site,
     phone: params.phone,
     service: params.service,
@@ -143,5 +165,6 @@ export function buildShiftDetails(params: {
     notes: params.notes,
     timeLabel: formatMinutesRange(params.shift.startMinutes, params.shift.endMinutes),
     dateLabel: formatDayHeader(params.shift.date),
+    didNotOccur: !!params.shift.didNotOccur,
   }
 }

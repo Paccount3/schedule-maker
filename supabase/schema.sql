@@ -14,6 +14,7 @@ create table if not exists public.participants (
   region_id text not null references public.regions (id) on delete restrict,
   name text not null default '',
   phone text not null default '',
+  counselor_name text not null default '',
   site text not null default '',
   site_contact text not null default '',
   best_address_for_checks text not null default '',
@@ -21,6 +22,10 @@ create table if not exists public.participants (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Existing projects: add counselor_name if the table already exists without it
+alter table public.participants
+  add column if not exists counselor_name text not null default '';
 
 create table if not exists public.authorizations (
   id text primary key,
@@ -117,9 +122,14 @@ create table if not exists public.shifts (
   coach_id text references public.coaches (id) on delete set null,
   other_coaching_activity_id text references public.other_coaching_activities (id) on delete cascade,
   notes text,
+  did_not_occur boolean not null default false,
   constraint shifts_type_check check (type in ('solo', 'coached', 'other-coaching')),
   constraint shifts_time_check check (end_minutes > start_minutes)
 );
+
+-- Existing projects: add did_not_occur if the table already exists without it
+alter table public.shifts
+  add column if not exists did_not_occur boolean not null default false;
 
 create table if not exists public.on_call_phones (
   region_id text not null references public.regions (id) on delete cascade,

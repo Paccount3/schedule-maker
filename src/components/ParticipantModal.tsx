@@ -417,6 +417,27 @@ export function ParticipantModal({ participant: initial, isNew, onClose }: Parti
           </label>
           <label className="block sm:col-span-2">
             <span className="text-xs font-medium text-slate-400">
+              Counselor Name <span className="text-red-400">*</span>
+            </span>
+            <input
+              className={`${inputClass} mt-1 ${fieldErrors.counselorName ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
+              placeholder="Counselor name"
+              value={participant.counselorName}
+              onChange={(e) => {
+                setFieldErrors((prev) => {
+                  const next = { ...prev }
+                  delete next.counselorName
+                  return next
+                })
+                setParticipant({ ...participant, counselorName: e.target.value })
+              }}
+            />
+            {fieldErrors.counselorName && (
+              <span className="mt-1 block text-xs text-red-400">{fieldErrors.counselorName}</span>
+            )}
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-medium text-slate-400">
               Site <span className="text-red-400">*</span>
             </span>
             <SiteField

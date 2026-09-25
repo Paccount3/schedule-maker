@@ -87,7 +87,7 @@ export function buildWeekLabel(weekStart: string): string {
 
 function shiftsForDate(shifts: Shift[], participantId: string, date: string): Shift[] {
   return shifts
-    .filter((s) => s.participantId === participantId && s.date === date)
+    .filter((s) => s.participantId === participantId && s.date === date && !s.didNotOccur)
     .sort((a, b) => a.startMinutes - b.startMinutes)
 }
 

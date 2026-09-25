@@ -58,6 +58,7 @@ type ParticipantRow = {
   region_id: string
   name: string
   phone: string
+  counselor_name: string
   site: string
   site_contact: string
   best_address_for_checks: string
@@ -119,6 +120,7 @@ type ShiftRow = {
   coach_id: string | null
   other_coaching_activity_id: string | null
   notes: string | null
+  did_not_occur: boolean
 }
 
 function participantToRow(p: Participant): ParticipantRow {
@@ -127,6 +129,7 @@ function participantToRow(p: Participant): ParticipantRow {
     region_id: p.regionId,
     name: p.name,
     phone: p.phone,
+    counselor_name: p.counselorName,
     site: p.site,
     site_contact: p.siteContact,
     best_address_for_checks: p.bestAddressForChecks,
@@ -219,6 +222,7 @@ function shiftToRow(shift: Shift): ShiftRow {
     coach_id: shift.coachId ?? null,
     other_coaching_activity_id: shift.otherCoachingActivityId ?? null,
     notes: shift.notes ?? null,
+    did_not_occur: !!shift.didNotOccur,
   }
 }
 
@@ -234,6 +238,7 @@ function shiftFromRow(row: ShiftRow): Shift {
     coachId: row.coach_id ?? undefined,
     otherCoachingActivityId: row.other_coaching_activity_id ?? undefined,
     notes: row.notes ?? undefined,
+    didNotOccur: row.did_not_occur ? true : undefined,
   }
 }
 
@@ -281,6 +286,7 @@ export async function loadAppStateFromSupabase(): Promise<AppState> {
       regionId: row.region_id,
       name: row.name,
       phone: row.phone,
+      counselorName: row.counselor_name ?? '',
       site: row.site,
       siteContact: row.site_contact,
       authorizations: authsByParticipant.get(row.id) ?? [],

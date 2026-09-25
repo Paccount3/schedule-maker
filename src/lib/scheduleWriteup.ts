@@ -15,7 +15,7 @@ import {
 const DIVIDER = '----------------------------------------'
 
 export const SCHEDULE_GENERAL_ADVICE =
-  'Participants and coaches: Please meet each other at the front of the site before proceeding into your shift. If the site contact is not indicated or present, inform site staff at the location that you are there working on an approved Goodwill trial or working interview. Do not begin working earlier than your schedule times or stay later. Always notify your employment specialist if your arrival or departure from your shift is different than scheduled. For any questions - contact your employment specialist.'
+  'Meet at the site entrance before starting. Work only scheduled times. Notify your employment specialist of any arrival/departure changes. Questions: contact your employment specialist.'
 
 function appendScheduleGeneralAdvice(lines: string[]): void {
   lines.push('')
@@ -143,10 +143,9 @@ export function buildParticipantWeekScheduleWriteup(
   const activeAuths = participant.authorizations.filter((a) => a.status === 'active')
   if (activeAuths.length === 1) {
     lines.push(`Service: ${activeAuths[0].service}`)
-    lines.push(`Authorization: ${activeAuths[0].authNumber}`)
   } else if (participant.authorizations.length > 0) {
     lines.push(
-      `Authorizations: ${participant.authorizations.map((a) => `${a.service} (${a.authNumber})`).join(', ')}`,
+      `Services: ${participant.authorizations.map((a) => a.service).join(', ')}`,
     )
   }
   lines.push(`Week: ${formatWeekHeading(weekStart)}`)
@@ -181,9 +180,11 @@ export function buildParticipantWeekScheduleWriteup(
     lines.push(DIVIDER)
     lines.push(`SHIFT ${index + 1} — ${day}`)
     lines.push(`When: ${time} (${hours} hour${hours === '1' ? '' : 's'})`)
+    if (shift.didNotOccur) {
+      lines.push('Status: Did not occur (hours not counted)')
+    }
     if (shiftAuth) {
       lines.push(`Service: ${shiftAuth.service}`)
-      lines.push(`Authorization #: ${shiftAuth.authNumber}`)
     }
 
     if (shift.type === 'coached') {
@@ -207,9 +208,12 @@ export function buildParticipantWeekScheduleWriteup(
       }
     }
 
-    const milestones = shiftAuth
-      ? milestoneInstructions(getShiftMilestoneLabels(shiftAuth, shift.id, shifts))
-      : ['This shift is not linked to an authorization.']
+    const milestones =
+      shiftAuth && !shift.didNotOccur
+        ? milestoneInstructions(getShiftMilestoneLabels(shiftAuth, shift.id, shifts))
+        : shiftAuth
+          ? []
+          : ['This shift is not linked to an authorization.']
     for (const note of milestones) {
       lines.push(`Important: ${note}`)
     }
@@ -225,6 +229,7 @@ export function buildParticipantWeekScheduleWriteup(
   let totalWork = 0
   let totalCoached = 0
   for (const shift of weekShifts) {
+    if (shift.didNotOccur) continue
     const h = durationHours(shift.startMinutes, shift.endMinutes)
     totalWork += h
     if (shift.type === 'coached') totalCoached += h
@@ -313,22 +318,28 @@ export function buildCoachWeekScheduleWriteup(
     if (index > 0) lines.push('')
     lines.push(DIVIDER)
     if (shift.type === 'other-coaching') {
-      otherCoachingHours += hours
+      if (!shift.didNotOccur) otherCoachingHours += hours
       assignmentNum++
       const activity = shift.otherCoachingActivityId
         ? activityMap.get(shift.otherCoachingActivityId)
         : undefined
       lines.push(`OTHER COACHING ASSIGNMENT ${assignmentNum} — ${day}`)
       lines.push(`When: ${time} (${hoursLabel} hour${hoursLabel === '1' ? '' : 's'})`)
+      if (shift.didNotOccur) {
+        lines.push('Status: Did not occur (hours not counted)')
+      }
       lines.push(`Assignment: ${activity?.name || 'Other coaching'}`)
       lines.push('Type: Other coaching assignment (not a participant session)')
       if (activity?.notes) lines.push(`Assignment notes: ${activity.notes}`)
       if (shift.notes?.trim()) lines.push(`Shift notes: ${shift.notes.trim()}`)
     } else {
-      coachedHours += hours
+      if (!shift.didNotOccur) coachedHours += hours
       sessionNum++
       lines.push(`SESSION ${sessionNum} — ${day}`)
       lines.push(`When: ${time} (${hoursLabel} hour${hoursLabel === '1' ? '' : 's'})`)
+      if (shift.didNotOccur) {
+        lines.push('Status: Did not occur (hours not counted)')
+      }
       lines.push(`Participant: ${p?.name || 'Unnamed'}`)
       if (p?.site) lines.push(`Site: ${p.site}`)
       if (p?.siteContact?.trim()) lines.push(`Site contact: ${p.siteContact.trim()}`)
@@ -338,9 +349,8 @@ export function buildCoachWeekScheduleWriteup(
         : undefined
       if (shiftAuth) {
         lines.push(`Service: ${shiftAuth.service}`)
-        lines.push(`Authorization #: ${shiftAuth.authNumber}`)
       }
-      if (p && shiftAuth) {
+      if (p && shiftAuth && !shift.didNotOccur) {
         const milestones = milestoneInstructions(
           getShiftMilestoneLabels(shiftAuth, shift.id, shifts),
           'coach',
@@ -348,7 +358,7 @@ export function buildCoachWeekScheduleWriteup(
         for (const note of milestones) {
           lines.push(`Important: ${note}`)
         }
-      } else if (p) {
+      } else if (p && !shiftAuth) {
         lines.push('Important: Shift is not linked to an authorization.')
       }
       if (shift.notes?.trim()) lines.push(`Notes: ${shift.notes.trim()}`)

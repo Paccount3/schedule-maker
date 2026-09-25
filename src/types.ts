@@ -62,6 +62,7 @@ export interface Participant {
   regionId: string
   name: string
   phone: string
+  counselorName: string
   site: string
   siteContact: string
   authorizations: Authorization[]
@@ -195,6 +196,8 @@ export interface Shift {
   type: ShiftType
   coachId?: string
   notes?: string
+  /** When true, shift stays on the calendar but counts toward no hours */
+  didNotOccur?: boolean
 }
 
 export interface AppState {

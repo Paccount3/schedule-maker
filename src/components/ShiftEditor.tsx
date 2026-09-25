@@ -81,6 +81,8 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
     state.shifts,
     dayOfWeek,
     weekDates,
+    state.otherCoachingActivities,
+    state.participants,
   )
   const milestoneLabels =
     authorization && !isOtherCoaching
@@ -98,6 +100,7 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
           state.shifts,
           weekDates,
           shift.id,
+          state.otherCoachingActivities,
         )
       : []
 

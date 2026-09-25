@@ -88,12 +88,13 @@ function CoachRow({
   const { state } = useStore()
   const { canEdit } = useAccess()
   const [expanded, setExpanded] = useState(false)
-  const summary = getCoachHoursSummary(coach, weekDates, state.shifts)
+  const summary = getCoachHoursSummary(coach, weekDates, state.shifts, undefined, state.otherCoachingActivities)
   const issueMessages = getCoachSidebarIssueMessages(
     coach,
     weekDates,
     state.shifts,
     state.participants,
+    state.otherCoachingActivities,
   )
   const hasIssue = issueMessages.length > 0
 
@@ -405,13 +406,13 @@ function ParticipantRow({
           className="flex h-7 items-center pl-0.5"
           title={
             coachingOnly
-              ? 'Job Coaching — working hours do not apply'
+              ? 'Coaching-only service — working hours do not apply'
               : 'Worked hours / authorized working hours'
           }
         >
           {coachingOnly ? (
             <span className="inline-block min-w-[2.75rem] text-right text-xs font-semibold tabular-nums text-slate-400">
-              JC
+              {acronym}
             </span>
           ) : (
             <CoachHoursLabel

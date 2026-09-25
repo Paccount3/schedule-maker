@@ -76,6 +76,7 @@ function hoursByDate(
   for (const shift of shifts) {
     if (shift.participantId !== participantId) continue
     if (shift.date < startDate || shift.date > endDate) continue
+    if (shift.didNotOccur) continue
     if (filter && !filter(shift)) continue
     const hours = durationHours(shift.startMinutes, shift.endMinutes)
     map.set(shift.date, (map.get(shift.date) ?? 0) + hours)

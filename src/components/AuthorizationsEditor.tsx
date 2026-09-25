@@ -145,9 +145,15 @@ export function AuthorizationsEditor({
                 <select
                   className={`${inputClass} mt-1`}
                   value={auth.service}
-                  onChange={(e) =>
-                    updateAuth(auth.id, { service: e.target.value as ParticipantService })
-                  }
+                  onChange={(e) => {
+                    const service = e.target.value as ParticipantService
+                    updateAuth(auth.id, {
+                      service,
+                      ...(isCoachingOnlyAuthorization({ ...auth, service })
+                        ? { workingHours: 0 }
+                        : {}),
+                    })
+                  }}
                 >
                   {PARTICIPANT_SERVICES.map((s) => (
                     <option key={s} value={s}>

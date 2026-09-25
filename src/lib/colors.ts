@@ -58,6 +58,22 @@ export function soloShiftStyle(): { backgroundColor: string; borderColor: string
   }
 }
 
+export function didNotOccurShiftStyle(): {
+  backgroundColor: string
+  borderColor: string
+  color: string
+  borderStyle: string
+  opacity: number
+} {
+  return {
+    backgroundColor: hexToRgba('#64748b', 0.18),
+    borderColor: '#94a3b8',
+    color: '#cbd5e1',
+    borderStyle: 'dashed',
+    opacity: 0.72,
+  }
+}
+
 /** Scale shift label size with block height — stays readable on short and long shifts */
 export function shiftLabelFontSize(blockHeight: number): number {
   return Math.min(13, Math.max(10, Math.round(blockHeight / 5.5)))

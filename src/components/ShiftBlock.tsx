@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Shift } from '../types'
-import { coachShiftStyle, shiftLabelFontSize, soloShiftStyle } from '../lib/colors'
+import { coachShiftStyle, didNotOccurShiftStyle, shiftLabelFontSize, soloShiftStyle } from '../lib/colors'
 import { formatMinutesRange } from '../lib/time'
 import type { ShiftLayout } from '../lib/shiftLayout'
 import { layoutStyle } from '../lib/shiftLayout'
@@ -35,6 +35,7 @@ interface ShiftBlockProps {
   height: number
   participantName: string
   participantPhone?: string
+  counselorName?: string
   site?: string
   accentColor: string
   coachName?: string
@@ -66,6 +67,7 @@ type ShiftDetailContentProps = {
   shift: Shift
   participantName: string
   participantPhone?: string
+  counselorName?: string
   site?: string
   coachName?: string
   coachPhone?: string
@@ -93,6 +95,7 @@ function ShiftDetailContent({
   shift,
   participantName,
   participantPhone,
+  counselorName,
   site,
   coachName,
   coachPhone,
@@ -124,16 +127,41 @@ function ShiftDetailContent({
     coachPhone && (isOtherCoaching || (isCoached && coachName))
       ? `${coachLabel} · ${coachPhone}`
       : coachLabel
+  const didNotOccur = !!shift.didNotOccur
 
   return (
     <div
       className={compact ? 'pointer-events-none relative z-0 px-1.5 py-1' : 'space-y-1 px-1'}
       style={compact && fontSize ? { fontSize: `${fontSize}px` } : undefined}
     >
-      <div className={compact ? 'truncate font-semibold' : 'text-sm font-semibold text-slate-100'}>
+      {didNotOccur && (
+        <div
+          className={
+            compact
+              ? 'truncate font-bold uppercase tracking-wide text-slate-300/95'
+              : 'text-sm font-bold uppercase tracking-wide text-slate-300'
+          }
+          style={compact ? { fontSize: `${subFontSize}px` } : undefined}
+        >
+          Did not occur
+        </div>
+      )}
+      <div
+        className={
+          compact
+            ? `truncate font-semibold ${didNotOccur ? 'line-through opacity-80' : ''}`
+            : `text-sm font-semibold text-slate-100 ${didNotOccur ? 'line-through opacity-80' : ''}`
+        }
+      >
         {participantName}
       </div>
-      <div className={compact ? 'truncate opacity-90' : 'text-sm text-slate-200'}>
+      <div
+        className={
+          compact
+            ? `truncate opacity-90 ${didNotOccur ? 'line-through' : ''}`
+            : `text-sm text-slate-200 ${didNotOccur ? 'line-through opacity-80' : ''}`
+        }
+      >
         {formatMinutesRange(shift.startMinutes, shift.endMinutes)}
       </div>
       {!isOtherCoaching && authorizationService && (
@@ -151,6 +179,14 @@ function ShiftDetailContent({
       >
         {coachLine}
       </div>
+      {!isOtherCoaching && counselorName && (
+        <div
+          className={compact ? 'truncate opacity-70' : 'text-sm text-slate-400'}
+          style={compact ? { fontSize: `${siteFontSize}px` } : undefined}
+        >
+          Counselor: {counselorName}
+        </div>
+      )}
       {site && (
         <div
           className={compact ? 'truncate opacity-70' : 'text-sm text-slate-400'}
@@ -167,7 +203,7 @@ function ShiftDetailContent({
           {participantPhone}
         </div>
       )}
-      {hoursThisWeek !== undefined && (
+      {!didNotOccur && hoursThisWeek !== undefined && (
         <div
           className={
             compact
@@ -179,7 +215,7 @@ function ShiftDetailContent({
           Hours this week scheduled: {formatHoursValue(hoursThisWeek)}
         </div>
       )}
-      {hoursRemainingAfterShift !== undefined && (
+      {!didNotOccur && hoursRemainingAfterShift !== undefined && (
         <div
           className={
             compact
@@ -203,7 +239,8 @@ function ShiftDetailContent({
           Hours remaining after this shift: {formatHoursValue(hoursRemainingAfterShift)}
         </div>
       )}
-      {authorizationHoursLines.map((line) => (
+      {!didNotOccur &&
+        authorizationHoursLines.map((line) => (
         <div
           key={line.label}
           className={
@@ -216,7 +253,8 @@ function ShiftDetailContent({
           {line.label}
         </div>
       ))}
-      {milestoneLabels.map((label) => (
+      {!didNotOccur &&
+        milestoneLabels.map((label) => (
         <div
           key={label}
           className={compact ? 'truncate text-sky-300/90' : 'text-sm text-sky-300'}
@@ -225,7 +263,7 @@ function ShiftDetailContent({
           {label}
         </div>
       ))}
-      {fullyScheduledLabel && (
+      {!didNotOccur && fullyScheduledLabel && (
         <div
           className={
             compact
@@ -240,7 +278,7 @@ function ShiftDetailContent({
           <span className="min-w-0 leading-tight drop-shadow-sm">{fullyScheduledLabel}</span>
         </div>
       )}
-      {errorLevel !== 'none' && errorSummary && (
+      {!didNotOccur && errorLevel !== 'none' && errorSummary && (
         <div
           className={
             compact
@@ -259,7 +297,7 @@ function ShiftDetailContent({
                 .join(' · ')}
         </div>
       )}
-      {multiShiftNotice && (
+      {!didNotOccur && multiShiftNotice && (
         <div
           className={
             compact
@@ -349,6 +387,7 @@ export function ShiftBlock({
   height,
   participantName,
   participantPhone,
+  counselorName,
   site,
   accentColor,
   coachName,
@@ -421,19 +460,22 @@ export function ShiftBlock({
   const detailFontSize = Math.max(8, errorFontSize - 1)
 
   const errorClass =
-    errorLevel === 'critical'
-      ? 'z-20 border-2 border-red-500 bg-red-950/85 text-red-50'
-      : errorLevel === 'warning'
-        ? 'border-2 border-amber-500 bg-amber-950/75 text-amber-50 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25)]'
-        : ''
+    shift.didNotOccur
+      ? ''
+      : errorLevel === 'critical'
+        ? 'z-20 border-2 border-red-500 bg-red-950/85 text-red-50'
+        : errorLevel === 'warning'
+          ? 'border-2 border-amber-500 bg-amber-950/75 text-amber-50 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.25)]'
+          : ''
 
-  const useAccentStyle = errorLevel === 'none'
+  const useAccentStyle = !shift.didNotOccur && errorLevel === 'none'
   const showHoverPopup = hoverReady && !!hoverPos && !isDragging
 
   const detailProps: ShiftDetailContentProps = {
     shift,
     participantName,
     participantPhone,
+    counselorName,
     site,
     coachName,
     coachPhone,
@@ -601,11 +643,13 @@ export function ShiftBlock({
           left: pos.left,
           width: pos.width,
           fontSize: `${fontSize}px`,
-          ...(useAccentStyle
-            ? isCoached
-              ? coachShiftStyle(accentColor)
-              : soloShiftStyle()
-            : undefined),
+          ...(shift.didNotOccur
+            ? didNotOccurShiftStyle()
+            : useAccentStyle
+              ? isCoached
+                ? coachShiftStyle(accentColor)
+                : soloShiftStyle()
+              : undefined),
         }}
       >
         {!readOnly && (
