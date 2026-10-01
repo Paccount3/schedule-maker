@@ -43,6 +43,8 @@ interface ShiftBlockProps {
   isCoached: boolean
   isOtherCoaching?: boolean
   isSelected: boolean
+  /** Gold outline for the participant currently selected in the sidebar */
+  highlightSelectedParticipant?: boolean
   isDragging: boolean
   errorLevel?: ShiftErrorLevel
   multiShiftNotice?: boolean
@@ -395,6 +397,7 @@ export function ShiftBlock({
   isCoached,
   isOtherCoaching = false,
   isSelected,
+  highlightSelectedParticipant = false,
   isDragging,
   errorLevel = 'none',
   multiShiftNotice = false,
@@ -634,7 +637,13 @@ export function ShiftBlock({
         onMouseLeave={() => clearHoverPopup()}
         className={`absolute select-none overflow-hidden rounded border text-left leading-snug shadow-sm ${
           readOnly ? 'cursor-pointer' : 'touch-none'
-        } ${errorClass} ${isSelected ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-slate-900' : ''} ${
+        } ${errorClass} ${
+          highlightSelectedParticipant
+            ? 'z-20 ring-2 ring-amber-300 ring-offset-1 ring-offset-slate-950 shadow-[0_0_12px_rgba(251,191,36,0.55)]'
+            : isSelected
+              ? 'ring-1 ring-blue-400 ring-offset-1 ring-offset-slate-900'
+              : ''
+        } ${
           isDragging ? 'z-30 opacity-90 shadow-lg' : errorLevel === 'critical' ? '' : 'z-10 hover:z-20'
         }`}
         style={{

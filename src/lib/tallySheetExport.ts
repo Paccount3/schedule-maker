@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
-import * as XLSX from 'xlsx'
-import type { TallySheetData } from './tallySheet'
+import * as XLSX from 'xlsx-js-style'
+import { formatTallyTableDate, type TallySheetData } from './tallySheet'
 
 function safeFilename(name: string): string {
   return name.replace(/[^a-z0-9-_]+/gi, '_').replace(/_+/g, '_') || 'participant'
@@ -197,44 +197,218 @@ export function exportTallySheetPdf(data: TallySheetData, participantName: strin
   doc.save(`${safeFilename(participantName)}_tally_sheet.pdf`)
 }
 
+const thin = { style: 'thin', color: { rgb: '000000' } }
+const medium = { style: 'medium', color: { rgb: '000000' } }
+const gridBorder = { top: thin, bottom: thin, left: thin, right: thin }
+const boxBorder = { top: medium, bottom: medium, left: medium, right: medium }
+const underline = { bottom: thin }
+
+function sheetFont(opts: { bold?: boolean; size?: number; italic?: boolean } = {}) {
+  return {
+    name: 'Calibri',
+    sz: opts.size ?? 11,
+    bold: !!opts.bold,
+    italic: !!opts.italic,
+  }
+}
+
+function putCell(
+  ws: XLSX.WorkSheet,
+  row: number,
+  col: number,
+  value: string | number,
+  style?: XLSX.CellObject['s'],
+) {
+  const cell: XLSX.CellObject = {
+    t: typeof value === 'number' ? 'n' : 's',
+    v: value,
+    s: style,
+  }
+  if (typeof value === 'number') cell.z = Number.isInteger(value) ? '0' : '0.##'
+  ws[XLSX.utils.encode_cell({ r: row, c: col })] = cell
+}
+
+function displayTableDate(date: string): string {
+  return date ? formatTallyTableDate(date) : ''
+}
+
 export function exportTallySheetExcel(data: TallySheetData, participantName: string): void {
-  const rows: (string | number)[][] = [
-    ['TALLY SHEET'],
-    [data.serviceLabel],
-    ['Authorization #', data.authNumber],
-    ['Consumers Name', data.consumerName],
-    ['Staff Name', data.staffName],
-    ['DORS Counselor', data.dorsCounselor],
-    ['Period From', data.periodFromLabel],
-    ['Period To', data.periodToLabel],
-    [],
-    ['Consumer Wages'],
-    ['Date', 'Hours'],
+  const ws: XLSX.WorkSheet = {}
+  const merges: XLSX.Range[] = []
+  const merge = (r1: number, c1: number, r2: number, c2: number) => {
+    merges.push({ s: { r: r1, c: c1 }, e: { r: r2, c: c2 } })
+  }
+
+  const labelStyle = {
+    font: sheetFont({ bold: true }),
+    alignment: { vertical: 'center' },
+  }
+  const valueStyle = {
+    font: sheetFont(),
+    alignment: { vertical: 'center' },
+    border: underline,
+  }
+  const headerStyle = {
+    font: sheetFont({ bold: true }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: gridBorder,
+  }
+  const cellStyle = {
+    font: sheetFont(),
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: gridBorder,
+  }
+  const totalLabelStyle = {
+    font: sheetFont({ bold: true }),
+    alignment: { horizontal: 'left', vertical: 'center' },
+    border: gridBorder,
+  }
+  const totalValueStyle = {
+    font: sheetFont({ bold: true }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: gridBorder,
+  }
+  const sectionStyle = {
+    font: sheetFont({ bold: true, size: 12 }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+  }
+
+  putCell(ws, 0, 3, 'Authorization #:', {
+    font: sheetFont({ bold: true }),
+    alignment: { horizontal: 'right', vertical: 'center' },
+  })
+  putCell(ws, 0, 4, data.authNumber, {
+    font: sheetFont({ bold: true, size: 12 }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: boxBorder,
+  })
+
+  putCell(ws, 2, 0, 'TALLY SHEET', {
+    font: sheetFont({ bold: true, size: 16 }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+  })
+  merge(2, 0, 2, 4)
+
+  putCell(ws, 3, 0, data.serviceLabel, {
+    font: sheetFont({ bold: true, size: 13 }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+  })
+  merge(3, 0, 3, 4)
+
+  const identity: [string, string][] = [
+    ['Consumers Name:', data.consumerName],
+    ['Staff Name:', data.staffName],
+    ['DORS Counselor:', data.dorsCounselor],
   ]
+  identity.forEach(([label, value], index) => {
+    const row = 5 + index
+    putCell(ws, row, 0, label, labelStyle)
+    putCell(ws, row, 1, value, valueStyle)
+    for (let col = 2; col <= 4; col++) putCell(ws, row, col, '', valueStyle)
+    merge(row, 1, row, 4)
+  })
 
-  for (const row of data.consumerWages) {
-    rows.push([row.dateLabel, row.hours])
+  putCell(ws, 8, 0, '(Period of time authorization is covered)', {
+    font: sheetFont({ italic: true, size: 9 }),
+    alignment: { horizontal: 'center', vertical: 'center' },
+  })
+  merge(8, 0, 8, 4)
+
+  putCell(
+    ws,
+    9,
+    0,
+    `From:  ${data.periodFromLabel}                    To:  ${data.periodToLabel}`,
+    {
+      font: sheetFont({ bold: true }),
+      alignment: { horizontal: 'center', vertical: 'center' },
+    },
+  )
+  merge(9, 0, 9, 4)
+
+  putCell(ws, 11, 0, 'Consumer Wages', sectionStyle)
+  merge(11, 0, 11, 1)
+  putCell(ws, 11, 3, 'Staff On-Site Evaluator', sectionStyle)
+  merge(11, 3, 11, 4)
+
+  putCell(ws, 12, 0, 'Date', headerStyle)
+  putCell(ws, 12, 1, 'Hours', headerStyle)
+  putCell(ws, 12, 3, 'Date', headerStyle)
+  putCell(ws, 12, 4, 'Hours', headerStyle)
+
+  const hourRows = Math.max(data.consumerWages.length, data.staffEvaluator.length, 1)
+  for (let i = 0; i < hourRows; i++) {
+    const row = 13 + i
+    const consumer = data.consumerWages[i]
+    const staff = data.staffEvaluator[i]
+    putCell(ws, row, 0, consumer ? displayTableDate(consumer.date) : '', cellStyle)
+    putCell(ws, row, 1, consumer ? consumer.hours : '', cellStyle)
+    putCell(
+      ws,
+      row,
+      3,
+      staff && staff.hours != null ? displayTableDate(staff.date) : '',
+      cellStyle,
+    )
+    putCell(ws, row, 4, staff?.hours != null ? staff.hours : '', cellStyle)
   }
-  rows.push(['Total', data.consumerWagesTotal])
-  rows.push([])
-  rows.push(['Staff On-Site Evaluator'])
-  rows.push(['Date', 'Hours'])
 
-  for (const row of data.staffEvaluator) {
-    rows.push([row.dateLabel, row.hours ?? ''])
+  const totalRow = 13 + hourRows
+  putCell(ws, totalRow, 0, 'Total:', totalLabelStyle)
+  putCell(ws, totalRow, 1, data.consumerWagesTotal, totalValueStyle)
+  putCell(ws, totalRow, 3, 'Total:', totalLabelStyle)
+  putCell(ws, totalRow, 4, data.staffEvaluatorTotal, totalValueStyle)
+
+  const reportTitleRow = totalRow + 2
+  putCell(ws, reportTitleRow, 0, 'Comprehensive Report', sectionStyle)
+  merge(reportTitleRow, 0, reportTitleRow, 4)
+
+  const reportHeaderRow = reportTitleRow + 1
+  putCell(ws, reportHeaderRow, 1, 'Date', headerStyle)
+  putCell(ws, reportHeaderRow, 2, 'Units', headerStyle)
+
+  const reportCount = Math.max(data.comprehensiveReport.length, 1)
+  for (let i = 0; i < reportCount; i++) {
+    const row = reportHeaderRow + 1 + i
+    const entry = data.comprehensiveReport[i]
+    putCell(ws, row, 1, entry ? displayTableDate(entry.date) : '', cellStyle)
+    putCell(ws, row, 2, entry ? entry.units : '', cellStyle)
   }
-  rows.push(['Total', data.staffEvaluatorTotal])
-  rows.push([])
-  rows.push(['Comprehensive Report'])
-  rows.push(['Date', 'Units'])
 
-  for (const row of data.comprehensiveReport) {
-    rows.push([row.dateLabel, row.units])
+  const reportTotalRow = reportHeaderRow + 1 + reportCount
+  putCell(ws, reportTotalRow, 1, 'Total unit:', totalLabelStyle)
+  putCell(ws, reportTotalRow, 2, data.comprehensiveReportTotal, totalValueStyle)
+
+  const rowHeights: XLSX.RowInfo[] = []
+  for (let row = 0; row <= reportTotalRow; row++) rowHeights[row] = { hpt: 18 }
+  rowHeights[0] = { hpt: 24 }
+  rowHeights[1] = { hpt: 8 }
+  rowHeights[2] = { hpt: 26 }
+  rowHeights[3] = { hpt: 20 }
+  rowHeights[10] = { hpt: 10 }
+
+  ws['!ref'] = XLSX.utils.encode_range({
+    s: { r: 0, c: 0 },
+    e: { r: reportTotalRow, c: 4 },
+  })
+  ws['!merges'] = merges
+  ws['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 26 }, { wch: 16 }]
+  ws['!rows'] = rowHeights
+  ws['!pageSetup'] = {
+    orientation: 'portrait',
+    paperSize: 1,
+    fitToWidth: 1,
+    fitToHeight: 1,
   }
-  rows.push(['Total unit', data.comprehensiveReportTotal])
+  ws['!margins'] = {
+    left: 0.5,
+    right: 0.5,
+    top: 0.5,
+    bottom: 0.5,
+    header: 0.25,
+    footer: 0.25,
+  }
 
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Tally Sheet')
   XLSX.writeFile(wb, `${safeFilename(participantName)}_tally_sheet.xlsx`)

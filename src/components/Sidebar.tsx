@@ -269,18 +269,18 @@ function ParticipantRow({
 
   const rowClass = hasAuthIssue
     ? selected
-      ? 'border-red-500/70 bg-red-950/45 ring-1 ring-red-500/25'
+      ? 'border-amber-300 bg-red-950/50 ring-2 ring-amber-300'
       : 'border-red-500/50 bg-red-950/30 hover:bg-red-950/40'
     : hasHoursIssue
       ? selected
-        ? 'border-amber-500/70 bg-amber-950/45 ring-1 ring-amber-500/25'
+        ? 'border-amber-300 bg-amber-950/55 ring-2 ring-amber-300'
         : 'border-amber-500/50 bg-amber-950/30 hover:bg-amber-950/40'
       : fullyScheduled
         ? selected
-          ? 'border-emerald-500/70 bg-emerald-950/45 ring-1 ring-emerald-500/25'
+          ? 'border-amber-300 bg-emerald-950/45 ring-2 ring-amber-300'
           : 'border-emerald-500/50 bg-emerald-950/35 hover:bg-emerald-950/45'
         : selected
-          ? 'border-blue-500/50 bg-blue-950/40'
+          ? 'border-amber-300 bg-amber-400/20 ring-2 ring-amber-300'
           : 'border-transparent hover:bg-slate-800/60'
 
   return (
@@ -289,7 +289,9 @@ function ParticipantRow({
     >
       <button onClick={onSelect} className="min-w-0 overflow-hidden text-left">
         <div className="flex min-w-0 items-baseline gap-1.5">
-          <span className="truncate text-sm font-medium text-slate-100">
+          <span
+            className={`truncate text-sm font-medium ${selected ? 'text-amber-100' : 'text-slate-100'}`}
+          >
             {participant.name || 'Unnamed'}
           </span>
           <span

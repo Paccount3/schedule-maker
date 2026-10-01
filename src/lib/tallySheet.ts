@@ -52,8 +52,18 @@ const SERVICE_TALLY_LABELS: Record<ParticipantService, string> = {
 }
 
 function formatShortDate(dateStr: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return ''
   const d = parseDateInput(dateStr)
+  if (Number.isNaN(d.getTime())) return ''
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`
+}
+
+/** Table dates on the printed tally form, e.g. 7/1/26 */
+export function formatTallyTableDate(dateStr: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return ''
+  const d = parseDateInput(dateStr)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`
 }
 
 export function formatTallyDate(dateStr: string): string {
@@ -89,21 +99,31 @@ export function serviceTallyLabel(service: ParticipantService): string {
   return SERVICE_TALLY_LABELS[service] ?? service
 }
 
+function withDateLabel<T extends { date: string; dateLabel: string }>(row: T): T {
+  return { ...row, dateLabel: row.date ? formatShortDate(row.date) : '' }
+}
+
 export function recalculateTallySheet(data: TallySheetData): TallySheetData {
-  const consumerWagesTotal = roundHours(
-    data.consumerWages.reduce((sum, row) => sum + row.hours, 0),
-  )
+  const consumerWages = data.consumerWages.map(withDateLabel)
+  const staffEvaluator = data.staffEvaluator.map(withDateLabel)
+  const comprehensiveReport = data.comprehensiveReport.map(withDateLabel)
+  const consumerWagesTotal = roundHours(consumerWages.reduce((sum, row) => sum + row.hours, 0))
   const staffEvaluatorTotal = roundHours(
-    data.staffEvaluator.reduce((sum, row) => sum + (row.hours ?? 0), 0),
+    staffEvaluator.reduce((sum, row) => sum + (row.hours ?? 0), 0),
   )
   const comprehensiveReportTotal = roundHours(
-    data.comprehensiveReport.reduce((sum, row) => sum + row.units, 0),
+    comprehensiveReport.reduce((sum, row) => sum + row.units, 0),
   )
 
   return {
     ...data,
+    periodFromLabel: data.periodFrom ? formatShortDate(data.periodFrom) : '',
+    periodToLabel: data.periodTo ? formatShortDate(data.periodTo) : '',
+    consumerWages,
     consumerWagesTotal,
+    staffEvaluator,
     staffEvaluatorTotal,
+    comprehensiveReport,
     comprehensiveReportTotal,
   }
 }

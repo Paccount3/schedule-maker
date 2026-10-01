@@ -777,8 +777,10 @@ export function WeekScheduler({
                         : undefined
                     const isCoached = shift.type === 'coached' && !!coach
                     const p = shift.participantId ? participantMap.get(shift.participantId) : undefined
+                    const highlightSelectedParticipant =
+                      !!shift.participantId && shift.participantId === selectedParticipantId
                     const isSelected =
-                      shift.participantId === selectedParticipantId ||
+                      highlightSelectedParticipant ||
                       shift.otherCoachingActivityId === selectedOtherCoachingId
                     const blockDragging = dragPreview?.shiftId === shift.id
                     const dayKey = dayOfWeekFromDate(parseDateInput(shift.date))
@@ -863,6 +865,7 @@ export function WeekScheduler({
                         isCoached={isCoached || isOtherCoaching}
                         isOtherCoaching={isOtherCoaching}
                         isSelected={isSelected}
+                        highlightSelectedParticipant={highlightSelectedParticipant}
                         isDragging={blockDragging}
                         errorLevel={errorLevel}
                         multiShiftNotice={multiShiftNotice}

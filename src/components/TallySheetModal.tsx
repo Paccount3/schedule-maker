@@ -28,6 +28,9 @@ const paperInput =
 const paperInputSmall =
   'w-full border-b border-slate-400 bg-transparent px-0.5 py-0 text-xs text-slate-900 focus:border-blue-600 focus:outline-none'
 
+const paperDateInput =
+  'border-b border-slate-400 bg-transparent px-1 py-0.5 text-sm text-slate-900 focus:border-blue-600 focus:outline-none [color-scheme:light]'
+
 const tableHeaderClass =
   'grid grid-cols-[1fr_72px_28px] gap-1 border-b-2 border-slate-800 pb-1 text-[10px] font-bold uppercase'
 
@@ -246,9 +249,26 @@ function TallySheetPreview({
       </div>
 
       <p className="mt-4 text-xs text-slate-600">(Period of time authorization is covered)</p>
-      <p className="mt-2 text-center text-sm font-bold tabular-nums">
-        From: {data.periodFromLabel} &nbsp;&nbsp; To: {data.periodToLabel}
-      </p>
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-6 text-sm font-bold">
+        <label className="flex items-center gap-2">
+          From:
+          <input
+            type="date"
+            className={paperDateInput}
+            value={data.periodFrom}
+            onChange={(e) => onFieldChange({ periodFrom: e.target.value })}
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          To:
+          <input
+            type="date"
+            className={paperDateInput}
+            value={data.periodTo}
+            onChange={(e) => onFieldChange({ periodTo: e.target.value })}
+          />
+        </label>
+      </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <section>
@@ -263,7 +283,12 @@ function TallySheetPreview({
           ) : (
             data.consumerWages.map((row, index) => (
               <div key={`consumer-${index}`} className={tableRowClass}>
-                <span className="pt-1 tabular-nums">{row.dateLabel}</span>
+                <input
+                  type="date"
+                  className={`${paperInputSmall} [color-scheme:light]`}
+                  value={row.date}
+                  onChange={(e) => onConsumerRowChange(index, { date: e.target.value })}
+                />
                 <input
                   type="number"
                   min={0}
@@ -309,7 +334,12 @@ function TallySheetPreview({
           ) : (
             data.staffEvaluator.map((row, index) => (
               <div key={`staff-${index}`} className={tableRowClass}>
-                <span className="pt-1 tabular-nums">{row.dateLabel}</span>
+                <input
+                  type="date"
+                  className={`${paperInputSmall} [color-scheme:light]`}
+                  value={row.date}
+                  onChange={(e) => onStaffRowChange(index, { date: e.target.value })}
+                />
                 <input
                   type="number"
                   min={0}
@@ -360,7 +390,12 @@ function TallySheetPreview({
         ) : (
           data.comprehensiveReport.map((row, index) => (
             <div key={`report-${index}`} className={tableRowClass}>
-              <span className="pt-1 tabular-nums">{row.dateLabel}</span>
+              <input
+                type="date"
+                className={`${paperInputSmall} [color-scheme:light]`}
+                value={row.date}
+                onChange={(e) => onReportRowChange(index, { date: e.target.value })}
+              />
               <input
                 type="number"
                 min={0}
