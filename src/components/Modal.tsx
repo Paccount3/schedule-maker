@@ -7,11 +7,25 @@ interface ModalProps {
   footer?: ReactNode
   wide?: boolean
   extraWide?: boolean
+  onBackdropClick?: () => void
 }
 
-export function Modal({ title, subtitle, children, footer, wide, extraWide }: ModalProps) {
+export function Modal({
+  title,
+  subtitle,
+  children,
+  footer,
+  wide,
+  extraWide,
+  onBackdropClick,
+}: ModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onBackdropClick?.()
+      }}
+    >
       <div
         className={`max-h-[90vh] w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 shadow-xl ${
           extraWide ? 'max-w-6xl' : wide ? 'max-w-2xl' : 'max-w-lg'

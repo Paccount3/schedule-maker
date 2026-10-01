@@ -334,6 +334,7 @@ export function ReportModeModal({ defaultStart, defaultEnd, onClose }: ReportMod
         wide
         title="Report Mode"
         subtitle={regionLabel}
+        onBackdropClick={onClose}
         footer={
           <div className="flex justify-end">
             <button
