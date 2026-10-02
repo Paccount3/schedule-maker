@@ -106,6 +106,7 @@ create table if not exists public.other_coaching_activities (
       'Shadowing',
       'Vacation',
       'Sick Time',
+      'OFF',
       'Other'
     )
   )

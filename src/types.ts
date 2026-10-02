@@ -130,6 +130,7 @@ export type OtherCoachingCategory =
   | 'Shadowing'
   | 'Vacation'
   | 'Sick Time'
+  | 'OFF'
   | 'Other'
 
 export const OTHER_COACHING_CATEGORIES: OtherCoachingCategory[] = [
@@ -139,6 +140,7 @@ export const OTHER_COACHING_CATEGORIES: OtherCoachingCategory[] = [
   'Shadowing',
   'Vacation',
   'Sick Time',
+  'OFF',
   'Other',
 ]
 
@@ -152,6 +154,7 @@ export const OTHER_COACHING_DEFAULT_HOURS: Record<OtherCoachingCategory, number>
   Shadowing: 4,
   Vacation: 8,
   'Sick Time': 8,
+  OFF: 8,
   Other: 2,
 }
 
