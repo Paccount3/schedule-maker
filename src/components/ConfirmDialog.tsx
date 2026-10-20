@@ -7,6 +7,8 @@ export interface ConfirmDialogOptions {
   confirmLabel?: string
   cancelLabel?: string
   variant?: 'danger' | 'warning'
+  /** Single OK button. Used for a result message rather than a destructive confirm. */
+  notice?: boolean
 }
 
 interface ConfirmDialogProps extends ConfirmDialogOptions {
@@ -21,6 +23,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   variant = 'danger',
+  notice = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -50,7 +53,7 @@ export function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        aria-describedby="confirm-dialog-impact"
+        aria-describedby={notice ? undefined : 'confirm-dialog-impact'}
       >
         <div className="border-b border-slate-800 px-5 py-4">
           <h3 id="confirm-dialog-title" className="text-lg font-semibold text-slate-100">
@@ -58,33 +61,39 @@ export function ConfirmDialog({
           </h3>
         </div>
 
-        <div className="space-y-4 p-5">
-          {message && <p className="text-sm text-slate-300">{message}</p>}
+        {!notice && (
+          <div className="space-y-4 p-5">
+            {message && <p className="text-sm text-slate-300">{message}</p>}
 
-          <div className={`rounded-lg border px-4 py-3 ${impactBorder}`}>
-            <p className={`text-xs font-semibold uppercase tracking-wide ${impactTitle}`}>
-              Impact
-            </p>
-            <p id="confirm-dialog-impact" className={`mt-1.5 text-sm leading-relaxed ${impactBody}`}>
-              {impact}
-            </p>
+            <div className={`rounded-lg border px-4 py-3 ${impactBorder}`}>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${impactTitle}`}>
+                Impact
+              </p>
+              <p id="confirm-dialog-impact" className={`mt-1.5 text-sm leading-relaxed ${impactBody}`}>
+                {impact}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex justify-end gap-2 border-t border-slate-800 px-5 py-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
-          >
-            {cancelLabel}
-          </button>
+          {!notice && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-md px-4 py-2 text-sm font-semibold ${confirmClass}`}
+            className={`rounded-md px-4 py-2 text-sm font-semibold ${
+              notice ? 'bg-blue-600 text-white hover:bg-blue-500' : confirmClass
+            }`}
           >
-            {confirmLabel}
+            {notice ? confirmLabel || 'OK' : confirmLabel}
           </button>
         </div>
       </div>

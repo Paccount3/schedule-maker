@@ -1,11 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { AppState, Coach, OtherCoachingActivity, Participant, Shift } from '../types'
-import {
-  filterCoachesByRegion,
-  filterParticipantsByRegion,
-  filterShiftsByRegion,
-  regionIdFromName,
-} from '../lib/regions'
+import { filterCoachesByRegion, regionIdFromName } from '../lib/regions'
 import {
   createEmptyCoach,
   createEmptyOtherCoachingActivity,
@@ -13,7 +8,7 @@ import {
   createOtherCoachingShift,
   createShift,
 } from '../lib/storage'
-import { buildCopiedShiftsFromPreviousWeek } from '../lib/scheduling'
+import { buildCopiedParticipantShiftsToNextWeek } from '../lib/scheduling'
 import { playSound, playSoundOption, type SoundOption } from '../lib/sounds'
 import {
   deleteCoach,
@@ -69,7 +64,7 @@ interface StoreContextValue {
     startMinutes: number,
     endMinutes: number,
   ) => Shift
-  copyShiftsFromPreviousWeek: () => number
+  copyParticipantShiftsToNextWeek: (participantId: string) => number
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null)
@@ -396,27 +391,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       playSound('place')
       return shift
     },
-    copyShiftsFromPreviousWeek: () => {
-      if (!canEdit) return 0
-      const regionParticipants = filterParticipantsByRegion(
-        state.participants,
-        state.selectedRegionId,
-      )
-      const regionShifts = filterShiftsByRegion(
-        state.shifts,
-        state.participants,
-        state.selectedRegionId,
-        state.otherCoachingActivities,
-      )
-      const copied = buildCopiedShiftsFromPreviousWeek(
+    copyParticipantShiftsToNextWeek: (participantId) => {
+      if (!canEdit || !participantId) return 0
+      const copied = buildCopiedParticipantShiftsToNextWeek(
         state.weekStart,
-        regionShifts,
-        regionParticipants,
+        participantId,
+        state.shifts,
       )
       if (copied.length === 0) return 0
       const newShifts: Shift[] = copied.map((d) => ({ ...d, id: crypto.randomUUID() }))
       update((s) => ({ ...s, shifts: [...s.shifts, ...newShifts] }))
-      persist('copyShiftsFromPreviousWeek', () => persistShifts(newShifts))
+      persist('copyParticipantShiftsToNextWeek', () => persistShifts(newShifts))
       playSound('bulk')
       return copied.length
     },

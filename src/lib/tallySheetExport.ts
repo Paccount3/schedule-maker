@@ -192,7 +192,7 @@ function drawTallySheetPage(doc: jsPDF, data: TallySheetData): void {
 }
 
 export function exportTallySheetPdf(data: TallySheetData, participantName: string): void {
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' })
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' })
   drawTallySheetPage(doc, data)
   doc.save(`${safeFilename(participantName)}_tally_sheet.pdf`)
 }
@@ -397,6 +397,7 @@ export function exportTallySheetExcel(data: TallySheetData, participantName: str
   ws['!pageSetup'] = {
     orientation: 'portrait',
     paperSize: 1,
+    fitToPage: true,
     fitToWidth: 1,
     fitToHeight: 1,
   }

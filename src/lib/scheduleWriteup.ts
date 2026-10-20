@@ -14,6 +14,16 @@ import {
 
 const DIVIDER = '----------------------------------------'
 
+function firstName(fullName: string): string {
+  const trimmed = fullName.trim()
+  if (!trimmed || trimmed === 'Unnamed') return 'there'
+  return trimmed.split(/\s+/)[0]
+}
+
+function scheduleGreeting(fullName: string): string {
+  return `Hi ${firstName(fullName)}, You can find your schedule for the upcoming week below. Feel free to reach out with any questions.`
+}
+
 export const SCHEDULE_GENERAL_ADVICE =
   'Meet at the site entrance before starting. Work only scheduled times. Notify your employment specialist of any arrival/departure changes. Questions: contact your employment specialist.'
 
@@ -133,6 +143,8 @@ export function buildParticipantWeekScheduleWriteup(
   const lines: string[] = []
   const name = participant.name || 'Unnamed'
 
+  lines.push(scheduleGreeting(name))
+  lines.push('')
   lines.push('YOUR SCHEDULE')
   lines.push('')
   lines.push(`Name: ${name}`)
@@ -271,6 +283,8 @@ export function buildCoachWeekScheduleWriteup(
   const lines: string[] = []
   const name = coach.name || 'Unnamed'
 
+  lines.push(scheduleGreeting(name))
+  lines.push('')
   lines.push('COACH SCHEDULE')
   lines.push('')
   lines.push(`Coach: ${name}`)

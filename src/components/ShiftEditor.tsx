@@ -3,6 +3,7 @@ import type { OtherCoachingActivity, Shift, ShiftType } from '../types'
 import { useStore } from '../store/useStore'
 import { useConfirm } from '../store/useConfirm'
 import { shiftDeleteConfirm } from '../lib/confirmMessages'
+import { filterCoachesForWeekView } from '../lib/regions'
 import { hexToRgba } from '../lib/colors'
 import {
   getAvailableCoaches,
@@ -62,10 +63,16 @@ export function ShiftEditor({ shift: initialShift, isNew, weekDates, onClose, on
     ? state.otherCoachingActivities.find((a) => a.id === shift.otherCoachingActivityId)
     : undefined
   const isOtherCoaching = shift.type === 'other-coaching'
-  const regionCoaches = state.coaches.filter(
-    (c) => c.regionId === (participant?.regionId ?? activity?.regionId ?? state.selectedRegionId),
-  )
-  const coach = shift.coachId ? regionCoaches.find((c) => c.id === shift.coachId) : undefined
+  const regionId = participant?.regionId ?? activity?.regionId ?? state.selectedRegionId
+  const activeCoaches = filterCoachesForWeekView(state.coaches, regionId, state.weekStart)
+  const assignedCoach = shift.coachId
+    ? state.coaches.find((c) => c.id === shift.coachId)
+    : undefined
+  const regionCoaches =
+    assignedCoach && !activeCoaches.some((c) => c.id === assignedCoach.id)
+      ? [...activeCoaches, assignedCoach]
+      : activeCoaches
+  const coach = assignedCoach
   const dayOfWeek = dayOfWeekFromDate(parseDateInput(shift.date))
 
   const authorization =

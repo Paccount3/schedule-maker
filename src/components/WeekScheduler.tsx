@@ -141,7 +141,7 @@ export function WeekScheduler({
     addShift,
     addShifts,
     removeShift,
-    copyShiftsFromPreviousWeek,
+    copyParticipantShiftsToNextWeek,
   } = useStore()
   const { confirm } = useConfirm()
   const { canEdit: roleCanEdit } = useAccess()
@@ -471,7 +471,8 @@ export function WeekScheduler({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-4 hidden shrink-0 grid-cols-1 items-start gap-4 md:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="mb-4 hidden shrink-0 flex-col gap-3 md:flex">
+        <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-slate-100">Week schedule</h2>
           <p className="text-xs text-slate-500">
@@ -544,8 +545,39 @@ export function WeekScheduler({
             </div>
           )}
         </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => {
+                playSound('weekNav')
+                prevWeek()
+              }}
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+            >
+              ← Prev
+            </button>
+            <button
+              onClick={() => {
+                playSound('weekNav')
+                goToToday()
+              }}
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
+            >
+              {formatWeekLabel(state.weekStart)}
+            </button>
+            <button
+              onClick={() => {
+                playSound('weekNav')
+                nextWeek()
+              }}
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-self-center">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setParticipantScheduleOpen(true)}
@@ -560,9 +592,8 @@ export function WeekScheduler({
           >
             Create Coach Schedule
           </button>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-self-end">
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={() => setShowSoloShifts((visible) => !visible)}
@@ -582,48 +613,37 @@ export function WeekScheduler({
           {canEdit && (
           <button
             onClick={() => {
-              const copied = copyShiftsFromPreviousWeek()
-              if (copied === 0) playSound('open')
+              const copied = copyParticipantShiftsToNextWeek(selectedParticipantId)
+              if (copied === 0) {
+                playSound('open')
+                return
+              }
+              const name = participant?.name?.trim() || 'Participant'
+              void confirm({
+                title: `${name} Shifts copied to next week`,
+                impact: '',
+                notice: true,
+                confirmLabel: 'OK',
+              })
             }}
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-            title="Copy all shifts from the previous week onto the same days this week"
+            disabled={!selectedParticipantId}
+            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            title={
+              participant
+                ? `Copy ${participant.name || 'this participant'}'s shifts from this week onto the same days next week`
+                : 'Select a participant to copy their shifts to next week'
+            }
           >
-            Copy Shifts from Last Week
+            Copy Participant's Shifts To Next Week
           </button>
           )}
-          <button
-            onClick={() => {
-              playSound('weekNav')
-              prevWeek()
-            }}
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            ← Prev
-          </button>
-          <button
-            onClick={() => {
-              playSound('weekNav')
-              goToToday()
-            }}
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
-          >
-            {formatWeekLabel(state.weekStart)}
-          </button>
-          <button
-            onClick={() => {
-              playSound('weekNav')
-              nextWeek()
-            }}
-            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            Next →
-          </button>
           <button
             onClick={() => setReportOpen(true)}
             className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-100"
           >
             Report Mode
           </button>
+          </div>
         </div>
       </div>
 

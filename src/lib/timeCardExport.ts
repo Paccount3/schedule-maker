@@ -166,23 +166,26 @@ function drawWeeklyCard(
 }
 
 export function exportTimeCardsPdf(bundle: TimeCardBundle, participantName: string): void {
-  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' })
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' })
   appendTimeCardsToPdf(doc, bundle)
   doc.save(`${safeFilename(participantName)}_time_cards.pdf`)
 }
 
 function appendTimeCardsToPdf(doc: jsPDF, bundle: TimeCardBundle): void {
   const margin = 36
-  const cardWidth = 360
+  const gap = 28
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const cardWidth = pageWidth - margin * 2
 
   for (let i = 0; i < bundle.weeklyCards.length; i += 2) {
-    if (i > 0) doc.addPage('letter', 'landscape')
-    const left = bundle.weeklyCards[i]
-    const right = bundle.weeklyCards[i + 1]
+    if (i > 0) doc.addPage('letter', 'portrait')
+    const top = bundle.weeklyCards[i]
+    const bottom = bundle.weeklyCards[i + 1]
 
-    drawWeeklyCard(doc, left, margin, margin, cardWidth)
-    if (right) {
-      drawWeeklyCard(doc, right, margin + cardWidth + 24, margin, cardWidth)
+    const nextY = drawWeeklyCard(doc, top, margin, margin, cardWidth)
+    if (bottom) {
+      drawWeeklyCard(doc, bottom, margin, nextY + gap, cardWidth)
     }
   }
 
@@ -196,11 +199,12 @@ function appendTimeCardsToPdf(doc: jsPDF, bundle: TimeCardBundle): void {
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
-  doc.text(`Total Hrs: ${totalHours.toFixed(2)}`, 400, doc.internal.pageSize.getHeight() - 36)
+  doc.text(`Total Hrs: ${totalHours.toFixed(2)}`, margin, pageHeight - 28)
   doc.text(
     `Pay Amount Total $: ${totalPay.toFixed(2)}`,
-    520,
-    doc.internal.pageSize.getHeight() - 36,
+    pageWidth - margin,
+    pageHeight - 28,
+    { align: 'right' },
   )
 }
 
@@ -209,7 +213,7 @@ export function exportReportPdf(bundle: TimeCardBundle, participantName: string)
   drawCheckRequestPage(doc, bundle.checkRequest)
 
   if (bundle.weeklyCards.length > 0) {
-    doc.addPage('letter', 'landscape')
+    doc.addPage('letter', 'portrait')
     appendTimeCardsToPdf(doc, bundle)
   }
 
@@ -247,6 +251,12 @@ function appendCheckRequestSheet(wb: XLSX.WorkBook, data: CheckRequestFormData):
 
   const ws = XLSX.utils.aoa_to_sheet(rows)
   ws['!cols'] = [{ wch: 24 }, { wch: 48 }]
+  ws['!pageSetup'] = {
+    orientation: 'portrait',
+    paperSize: 1,
+    fitToWidth: 1,
+    fitToHeight: 1,
+  }
   XLSX.utils.book_append_sheet(wb, ws, 'Check Request')
 }
 
@@ -285,6 +295,12 @@ function appendTimeCardSheets(wb: XLSX.WorkBook, bundle: TimeCardBundle): void {
 
     const ws = XLSX.utils.aoa_to_sheet(rows)
     ws['!cols'] = [{ wch: 8 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 12 }]
+    ws['!pageSetup'] = {
+      orientation: 'portrait',
+      paperSize: 1,
+      fitToWidth: 1,
+      fitToHeight: 1,
+    }
     const sheetName = `Week ${card.weekEnding}`.slice(0, 31)
     XLSX.utils.book_append_sheet(wb, ws, sheetName)
   }

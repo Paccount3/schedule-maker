@@ -1059,31 +1059,44 @@ export function defaultAvailability(): Partial<Record<DayOfWeek, TimeRange | nul
   }
 }
 
-export function buildCopiedShiftsFromPreviousWeek(
+export function buildCopiedParticipantShiftsToNextWeek(
   weekStart: string,
+  participantId: string,
   shifts: Shift[],
-  participants: Participant[],
 ): Omit<Shift, 'id'>[] {
+  if (!participantId) return []
+
   const currentWeek = getWeekDates(weekStart)
-  const prevWeekStart = toDateInput(addDays(parseDateInput(weekStart), -7))
-  const prevWeek = getWeekDates(prevWeekStart)
-  const dateMap = new Map(prevWeek.map((d, i) => [d, currentWeek[i]]))
+  const nextWeekStart = toDateInput(addDays(parseDateInput(weekStart), 7))
+  const nextWeek = getWeekDates(nextWeekStart)
+  const dateMap = new Map(currentWeek.map((d, i) => [d, nextWeek[i]]))
+
+  const alreadyThere = new Set(
+    shifts
+      .filter(
+        (s) =>
+          s.participantId === participantId &&
+          nextWeek.includes(s.date) &&
+          !s.didNotOccur,
+      )
+      .map((s) => `${s.date}|${s.startMinutes}|${s.endMinutes}|${s.type}`),
+  )
 
   const copied: Omit<Shift, 'id'>[] = []
 
   for (const shift of shifts) {
-    if (!prevWeek.includes(shift.date)) continue
+    if (shift.participantId !== participantId) continue
+    if (!currentWeek.includes(shift.date)) continue
+    if (shift.type === 'other-coaching' || shift.didNotOccur) continue
 
-    const newDate = dateMap.get(shift.date)!
-    // Other coaching is week-scoped via activity.weekOf — copying would create
-    // orphan shifts that stay hidden but still trip double-book conflicts.
-    if (shift.type === 'other-coaching') continue
+    const newDate = dateMap.get(shift.date)
+    if (!newDate) continue
 
-    if (!shift.participantId) continue
-    const participant = participants.find((p) => p.id === shift.participantId)
-    if (!participant) continue
+    const key = `${newDate}|${shift.startMinutes}|${shift.endMinutes}|${shift.type}`
+    if (alreadyThere.has(key)) continue
+    alreadyThere.add(key)
 
-    const copy: Omit<Shift, 'id'> = {
+    copied.push({
       participantId: shift.participantId,
       authorizationId: shift.authorizationId,
       date: newDate,
@@ -1092,8 +1105,7 @@ export function buildCopiedShiftsFromPreviousWeek(
       type: shift.type,
       coachId: shift.coachId,
       notes: shift.notes,
-    }
-    copied.push(copy)
+    })
   }
 
   return copied
