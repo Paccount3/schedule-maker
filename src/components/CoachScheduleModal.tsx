@@ -12,8 +12,8 @@ import {
   buildCoachWeekScheduleWriteup,
   coachIdsWithCoachedShiftsInWeek,
 } from '../lib/scheduleWriteup'
+import { downloadCoachWeekScheduleIcs } from '../lib/coachScheduleIcs'
 import { formatWeekLabel } from '../lib/time'
-import { CopyScheduleImageButton } from './CopyScheduleImageButton'
 import { CopyTextButton } from './CopyTextButton'
 import { Modal } from './Modal'
 import { OnCallPhoneField, useOnCallPhone } from './OnCallPhoneField'
@@ -98,15 +98,25 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
       footer={
         <div className="flex justify-end gap-2">
           <CopyTextButton text={writeup} disabled={!writeup} />
-          <CopyScheduleImageButton
-            writeup={writeup}
-            scheduleKind="coach"
-            personName={selected?.name || 'Unnamed'}
-            regionLabel={regionLabel}
-            weekLabel={formatWeekLabel(weekStart)}
-            filename={`${(selected?.name || 'coach').replace(/[^a-z0-9-_]+/gi, '_')}_schedule.jpg`}
-            disabled={!writeup}
-          />
+          <button
+            type="button"
+            onClick={() => {
+              if (!selected) return
+              downloadCoachWeekScheduleIcs(
+                selected,
+                weekDates,
+                weekStart,
+                regionShifts,
+                regionParticipants,
+                regionOtherCoaching,
+                onCallPhone,
+              )
+            }}
+            disabled={!selected || !writeup}
+            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Download calendar (.ics)
+          </button>
           <button
             onClick={onClose}
             className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"

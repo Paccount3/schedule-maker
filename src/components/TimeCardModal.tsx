@@ -30,51 +30,6 @@ const paperInput =
 const paperInputSmall =
   'w-full border-b border-slate-400 bg-transparent px-0.5 py-0 text-xs text-slate-900 focus:border-blue-600 focus:outline-none'
 
-const signatureScriptClass =
-  "font-['Segoe_Script','Brush_Script_MT','Lucida_Handwriting',cursive] text-2xl leading-none text-slate-800"
-
-function SignatureField({
-  printedLabel,
-  printedValue,
-  signatureValue,
-  onPrintedChange,
-  onSignatureChange,
-  printedPlaceholder = 'Printed name',
-}: {
-  printedLabel: string
-  printedValue: string
-  signatureValue: string
-  onPrintedChange: (value: string) => void
-  onSignatureChange: (value: string) => void
-  printedPlaceholder?: string
-}) {
-  return (
-    <div className="space-y-2">
-      <label className="block text-sm">
-        {printedLabel}
-        <input
-          className={`${paperInput} mt-1 font-sans text-sm`}
-          value={printedValue}
-          onChange={(e) => onPrintedChange(e.target.value)}
-          placeholder={printedPlaceholder}
-        />
-      </label>
-      <label className="block text-sm">
-        Signature
-        <input
-          className={`${paperInput} mt-1 ${signatureScriptClass} text-xl`}
-          value={signatureValue}
-          onChange={(e) => onSignatureChange(e.target.value)}
-          placeholder="Signature"
-        />
-        <div className={`mt-2 min-h-[2rem] border-b border-slate-400 pb-1 ${signatureScriptClass}`}>
-          {signatureValue || printedValue || '\u00A0'}
-        </div>
-      </label>
-    </div>
-  )
-}
-
 export function TimeCardModal({
   participant,
   shifts,
@@ -363,16 +318,15 @@ function CheckRequestPreview({
             onChange={(e) => onChange({ mailByDate: e.target.value })}
           />
         </label>
-        <div className="sm:col-span-2">
-          <SignatureField
-            printedLabel="Requested by (printed)"
-            printedValue={data.requestedBy}
-            signatureValue={data.requestedBySignature}
-            onPrintedChange={(requestedBy) => onChange({ requestedBy })}
-            onSignatureChange={(requestedBySignature) => onChange({ requestedBySignature })}
-            printedPlaceholder="Leave blank for staff to complete"
+        <label className="block sm:col-span-2">
+          Requested by
+          <input
+            className={`${paperInput} mt-1`}
+            value={data.requestedBy}
+            onChange={(e) => onChange({ requestedBy: e.target.value })}
+            placeholder="Leave blank for staff to complete"
           />
-        </div>
+        </label>
       </div>
     </div>
   )

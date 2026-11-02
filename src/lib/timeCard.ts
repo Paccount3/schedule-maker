@@ -12,6 +12,14 @@ import {
 
 export const DEFAULT_WAGE_RATE = 16.94
 
+/** Charge account codes used on check request forms, keyed by region. */
+export function chargeAccountForRegion(regionIdOrName: string): string {
+  const key = regionIdOrName.toLowerCase()
+  if (key.includes('north')) return 'BRS North 750276'
+  if (key.includes('west')) return 'BRS West 720156'
+  return ''
+}
+
 function splitCheckAddress(address: string): { address1: string; address2: string } {
   const lines = address
     .split(/\r?\n/)
@@ -60,7 +68,6 @@ export interface CheckRequestFormData {
   voucherNo: string
   chargeAccount: string
   requestedBy: string
-  requestedBySignature: string
   mailByDate: string
 }
 
@@ -236,9 +243,8 @@ export function buildTimeCardBundle(
     reason: buildCheckRequestReason(service, wageRate, totalHours, amount),
     returnCheckTo: '',
     voucherNo: '',
-    chargeAccount: '',
+    chargeAccount: chargeAccountForRegion(participant.regionId),
     requestedBy: '',
-    requestedBySignature: '',
     mailByDate: 'ASAP',
   }
 

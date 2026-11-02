@@ -27,11 +27,21 @@ function scheduleGreeting(fullName: string): string {
 export const SCHEDULE_GENERAL_ADVICE =
   'Meet at the site entrance before starting. Work only scheduled times. Notify your employment specialist of any arrival/departure changes. Questions: contact your employment specialist.'
 
+export const COACH_CALENDAR_INSTRUCTIONS =
+  'A calendar file (.ics) can be opened in Outlook to add these shifts to your calendar. Ask your Employment Specialist for the file or help importing it.'
+
 function appendScheduleGeneralAdvice(lines: string[]): void {
   lines.push('')
   lines.push(DIVIDER)
   lines.push('GENERAL ADVICE')
   lines.push(SCHEDULE_GENERAL_ADVICE)
+}
+
+function appendCoachCalendarInstructions(lines: string[]): void {
+  lines.push('')
+  lines.push(DIVIDER)
+  lines.push('OUTLOOK CALENDAR')
+  lines.push(COACH_CALENDAR_INSTRUCTIONS)
 }
 
 function formatWeekHeading(weekStart: string): string {
@@ -298,6 +308,7 @@ export function buildCoachWeekScheduleWriteup(
 
   if (weekShifts.length === 0) {
     lines.push('No coached sessions or other coaching assignments are scheduled this week.')
+    appendCoachCalendarInstructions(lines)
     appendScheduleGeneralAdvice(lines)
     return lines.join('\n')
   }
@@ -392,6 +403,7 @@ export function buildCoachWeekScheduleWriteup(
     `Total hours this week: ${formatHoursValue(coachedHours + otherCoachingHours)}`,
   )
 
+  appendCoachCalendarInstructions(lines)
   appendScheduleGeneralAdvice(lines)
 
   return lines.join('\n')

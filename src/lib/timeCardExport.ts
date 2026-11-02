@@ -6,22 +6,6 @@ function safeFilename(name: string): string {
   return name.replace(/[^a-z0-9-_]+/gi, '_').replace(/_+/g, '_') || 'participant'
 }
 
-function drawScriptSignature(
-  doc: jsPDF,
-  text: string,
-  x: number,
-  y: number,
-  maxWidth: number,
-): void {
-  if (!text.trim()) return
-  doc.setFont('times', 'italic')
-  doc.setFontSize(16)
-  const lines = doc.splitTextToSize(text, maxWidth)
-  doc.text(lines, x, y)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-}
-
 function drawCheckRequestPage(doc: jsPDF, data: CheckRequestFormData): void {
   const margin = 48
   let y = margin
@@ -71,7 +55,7 @@ function drawCheckRequestPage(doc: jsPDF, data: CheckRequestFormData): void {
   doc.text(reasonLines, margin, y)
   y += reasonLines.length * 14 + 20
 
-  doc.rect(margin, y, 516, 130)
+  doc.rect(margin, y, 516, 110)
   doc.text(
     `Return Check to ${data.returnCheckTo || '_________________________'}`,
     margin + 10,
@@ -91,12 +75,7 @@ function drawCheckRequestPage(doc: jsPDF, data: CheckRequestFormData): void {
     margin + 10,
     y + 88,
   )
-  if (data.requestedBySignature) {
-    drawScriptSignature(doc, data.requestedBySignature, margin + 90, y + 108, 180)
-  } else {
-    doc.text('Signature: _________________________', margin + 10, y + 108)
-  }
-  doc.text('Approved by: _________________________', margin + 280, y + 108)
+  doc.text('Approved by: _________________________', margin + 280, y + 88)
 }
 
 export function exportCheckRequestPdf(data: CheckRequestFormData, participantName: string): void {
@@ -244,8 +223,7 @@ function appendCheckRequestSheet(wb: XLSX.WorkBook, data: CheckRequestFormData):
     ['Return Check To', data.returnCheckTo],
     ['Voucher No.', data.voucherNo],
     ['Charge Account', data.chargeAccount],
-    ['Requested By (Printed)', data.requestedBy],
-    ['Requested By (Signature)', data.requestedBySignature],
+    ['Requested By', data.requestedBy],
     ['Mail By Date', data.mailByDate],
   ]
 
