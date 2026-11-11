@@ -104,6 +104,25 @@ export function shiftBlocksCoachTime(
   return true
 }
 
+/** OFF blocks the calendar but does not count toward a coach's weekly hour total. */
+export function isOffOtherCoachingShift(
+  shift: Shift,
+  activities: OtherCoachingActivity[] = [],
+): boolean {
+  if (shift.type !== 'other-coaching' || !shift.otherCoachingActivityId) return false
+  if (activities.length === 0) return false
+  const activity = activities.find((a) => a.id === shift.otherCoachingActivityId)
+  return activity?.name === 'OFF'
+}
+
+export function shiftCountsTowardCoachHours(
+  shift: Shift,
+  activities: OtherCoachingActivity[] = [],
+): boolean {
+  if (!shiftBlocksCoachTime(shift, activities)) return false
+  return !isOffOtherCoachingShift(shift, activities)
+}
+
 function coachOverlapLabel(
   shift: Shift,
   participants: Participant[],
@@ -959,7 +978,7 @@ export function getCoachHoursForWeek(
       (s) =>
         s.id !== excludeShiftId &&
         s.coachId === coachId &&
-        shiftBlocksCoachTime(s, otherCoachingActivities) &&
+        shiftCountsTowardCoachHours(s, otherCoachingActivities) &&
         weekDates.includes(s.date),
     )
     .reduce((sum, s) => sum + durationHours(s.startMinutes, s.endMinutes), 0)

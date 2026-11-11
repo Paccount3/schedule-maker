@@ -27,8 +27,8 @@ function scheduleGreeting(fullName: string): string {
 export const SCHEDULE_GENERAL_ADVICE =
   'Meet at the site entrance before starting. Work only scheduled times. Notify your employment specialist of any arrival/departure changes. Questions: contact your employment specialist.'
 
-export const COACH_CALENDAR_INSTRUCTIONS =
-  'A calendar file (.ics) can be opened in Outlook to add these shifts to your calendar. Ask your Employment Specialist for the file or help importing it.'
+export const PARTICIPANT_CALL_OUT_IMPORTANT =
+  'If calling out for a shift due to being sick or otherwise, you are encouraged to call the site directly by looking up the number online and asking for the supervisor you work with. This is part of the trial work experience to do so properly.'
 
 function appendScheduleGeneralAdvice(lines: string[]): void {
   lines.push('')
@@ -37,11 +37,11 @@ function appendScheduleGeneralAdvice(lines: string[]): void {
   lines.push(SCHEDULE_GENERAL_ADVICE)
 }
 
-function appendCoachCalendarInstructions(lines: string[]): void {
+function appendParticipantCallOutImportant(lines: string[]): void {
   lines.push('')
   lines.push(DIVIDER)
-  lines.push('OUTLOOK CALENDAR')
-  lines.push(COACH_CALENDAR_INSTRUCTIONS)
+  lines.push('IMPORTANT')
+  lines.push(PARTICIPANT_CALL_OUT_IMPORTANT)
 }
 
 function formatWeekHeading(weekStart: string): string {
@@ -178,6 +178,7 @@ export function buildParticipantWeekScheduleWriteup(
 
   if (weekShifts.length === 0) {
     lines.push('No shifts are scheduled for you this week.')
+    appendParticipantCallOutImportant(lines)
     appendScheduleGeneralAdvice(lines)
     return lines.join('\n')
   }
@@ -265,6 +266,7 @@ export function buildParticipantWeekScheduleWriteup(
   }
   lines.push(`Coached hours this week: ${formatHoursValue(totalCoached)}`)
 
+  appendParticipantCallOutImportant(lines)
   appendScheduleGeneralAdvice(lines)
 
   return lines.join('\n')
@@ -308,7 +310,6 @@ export function buildCoachWeekScheduleWriteup(
 
   if (weekShifts.length === 0) {
     lines.push('No coached sessions or other coaching assignments are scheduled this week.')
-    appendCoachCalendarInstructions(lines)
     appendScheduleGeneralAdvice(lines)
     return lines.join('\n')
   }
@@ -343,15 +344,17 @@ export function buildCoachWeekScheduleWriteup(
     if (index > 0) lines.push('')
     lines.push(DIVIDER)
     if (shift.type === 'other-coaching') {
-      if (!shift.didNotOccur) otherCoachingHours += hours
-      assignmentNum++
       const activity = shift.otherCoachingActivityId
         ? activityMap.get(shift.otherCoachingActivityId)
         : undefined
+      if (!shift.didNotOccur && activity?.name !== 'OFF') otherCoachingHours += hours
+      assignmentNum++
       lines.push(`OTHER COACHING ASSIGNMENT ${assignmentNum} — ${day}`)
       lines.push(`When: ${time} (${hoursLabel} hour${hoursLabel === '1' ? '' : 's'})`)
       if (shift.didNotOccur) {
         lines.push('Status: Did not occur (hours not counted)')
+      } else if (activity?.name === 'OFF') {
+        lines.push('Status: OFF (hours not counted toward weekly total)')
       }
       lines.push(`Assignment: ${activity?.name || 'Other coaching'}`)
       lines.push('Type: Other coaching assignment (not a participant session)')
@@ -403,7 +406,6 @@ export function buildCoachWeekScheduleWriteup(
     `Total hours this week: ${formatHoursValue(coachedHours + otherCoachingHours)}`,
   )
 
-  appendCoachCalendarInstructions(lines)
   appendScheduleGeneralAdvice(lines)
 
   return lines.join('\n')

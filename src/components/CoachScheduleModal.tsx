@@ -12,7 +12,10 @@ import {
   buildCoachWeekScheduleWriteup,
   coachIdsWithCoachedShiftsInWeek,
 } from '../lib/scheduleWriteup'
-import { downloadCoachWeekScheduleIcs } from '../lib/coachScheduleIcs'
+import {
+  downloadCoachWeekScheduleIcs,
+  downloadRegionCoachWeekScheduleIcs,
+} from '../lib/coachScheduleIcs'
 import { formatWeekLabel } from '../lib/time'
 import { CopyTextButton } from './CopyTextButton'
 import { Modal } from './Modal'
@@ -96,7 +99,7 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
       title="Create Coach Schedule"
       subtitle={`${regionLabel} · ${formatWeekLabel(weekStart)}`}
       footer={
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <CopyTextButton text={writeup} disabled={!writeup} />
           <button
             type="button"
@@ -116,6 +119,26 @@ export function CoachScheduleModal({ weekStart, weekDates, onClose }: CoachSched
             className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Download calendar (.ics)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              downloadRegionCoachWeekScheduleIcs(
+                regionCoaches,
+                weekDates,
+                weekStart,
+                regionShifts,
+                regionParticipants,
+                regionOtherCoaching,
+                onCallPhone,
+                regionLabel,
+              )
+            }}
+            disabled={eligibleCoaches.length === 0}
+            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            title="Download one calendar file with every coach shift in this region for the week"
+          >
+            Download All Coach Shifts Weekly Calendar
           </button>
           <button
             onClick={onClose}

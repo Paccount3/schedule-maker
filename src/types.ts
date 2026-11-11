@@ -131,7 +131,7 @@ export type OtherCoachingCategory =
   | 'Vacation'
   | 'Sick Time'
   | 'OFF'
-  | 'Other'
+  | 'Other Assignment'
 
 export const OTHER_COACHING_CATEGORIES: OtherCoachingCategory[] = [
   'Office Time',
@@ -141,7 +141,7 @@ export const OTHER_COACHING_CATEGORIES: OtherCoachingCategory[] = [
   'Vacation',
   'Sick Time',
   'OFF',
-  'Other',
+  'Other Assignment',
 ]
 
 export const OTHER_COACHING_NOTES_MAX = 30
@@ -155,7 +155,7 @@ export const OTHER_COACHING_DEFAULT_HOURS: Record<OtherCoachingCategory, number>
   Vacation: 8,
   'Sick Time': 8,
   OFF: 8,
-  Other: 2,
+  'Other Assignment': 2,
 }
 
 export function defaultStartingHoursForCategory(category: OtherCoachingCategory): number {

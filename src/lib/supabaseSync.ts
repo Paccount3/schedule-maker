@@ -322,7 +322,7 @@ export async function loadAppStateFromSupabase(): Promise<AppState> {
       id: row.id,
       regionId: row.region_id,
       coachId: row.coach_id ?? '',
-      name: row.name as OtherCoachingActivity['name'],
+      name: (row.name === 'Other' ? 'Other Assignment' : row.name) as OtherCoachingActivity['name'],
       notes: row.notes,
       hoursPerWeek: asNumber(row.hours_per_week),
       shiftsPerWeek: row.shifts_per_week,

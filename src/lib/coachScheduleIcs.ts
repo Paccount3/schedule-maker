@@ -50,12 +50,14 @@ function eventForShift(
   participants: Participant[],
   activities: OtherCoachingActivity[],
   onCallPhone?: string,
+  options?: { includeCoachInSummary?: boolean },
 ): string[] | null {
   if (shift.didNotOccur) return null
 
   const description: string[] = []
   let summary = ''
   let location = ''
+  const coachName = coach.name || 'Unnamed'
 
   if (shift.type === 'other-coaching') {
     const activity = shift.otherCoachingActivityId
@@ -87,7 +89,11 @@ function eventForShift(
   }
 
   if (onCallPhone?.trim()) description.push(`On call phone: ${onCallPhone.trim()}`)
-  description.push(`Coach: ${coach.name || 'Unnamed'}`)
+  description.push(`Coach: ${coachName}`)
+
+  if (options?.includeCoachInSummary) {
+    summary = `${coachName} · ${summary}`
+  }
 
   const stamp = toIcsUtcStamp()
   return [
@@ -101,6 +107,18 @@ function eventForShift(
     `DESCRIPTION:${escapeIcsText(description.join('\n'))}`,
     'END:VEVENT',
   ]
+}
+
+function downloadIcsFile(ics: string, filename: string): boolean {
+  if (!ics.includes('BEGIN:VEVENT')) return false
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename.endsWith('.ics') ? filename : `${filename}.ics`
+  link.click()
+  URL.revokeObjectURL(url)
+  return true
 }
 
 export function buildCoachWeekScheduleIcs(
@@ -162,14 +180,84 @@ export function downloadCoachWeekScheduleIcs(
     otherCoachingActivities,
     onCallPhone,
   )
-  if (!ics.includes('BEGIN:VEVENT')) return false
+  return downloadIcsFile(ics, `${safeFilename(coach.name || 'coach')}_${weekStart}_schedule.ics`)
+}
 
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${safeFilename(coach.name || 'coach')}_${weekStart}_schedule.ics`
-  link.click()
-  URL.revokeObjectURL(url)
-  return true
+export function buildRegionCoachWeekScheduleIcs(
+  coaches: Coach[],
+  weekDates: string[],
+  shifts: Shift[],
+  participants: Participant[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
+  onCallPhone?: string,
+  calendarName = 'Region coach schedule',
+): string {
+  const coachMap = new Map(coaches.map((c) => [c.id, c]))
+  const weekShifts = shifts
+    .filter(
+      (s) =>
+        shiftUsesCoach(s) &&
+        !!s.coachId &&
+        coachMap.has(s.coachId) &&
+        weekDates.includes(s.date) &&
+        !s.didNotOccur,
+    )
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.startMinutes - b.startMinutes ||
+        (coachMap.get(a.coachId!)?.name || '').localeCompare(coachMap.get(b.coachId!)?.name || ''),
+    )
+
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Schedule Maker//Region Coach Schedule//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${escapeIcsText(calendarName)}`,
+  ]
+
+  for (const shift of weekShifts) {
+    const coach = coachMap.get(shift.coachId!)
+    if (!coach) continue
+    const event = eventForShift(
+      shift,
+      coach,
+      participants,
+      otherCoachingActivities,
+      onCallPhone,
+      { includeCoachInSummary: true },
+    )
+    if (event) lines.push(...event)
+  }
+
+  lines.push('END:VCALENDAR')
+  return lines.map(foldIcsLine).join('\r\n') + '\r\n'
+}
+
+export function downloadRegionCoachWeekScheduleIcs(
+  coaches: Coach[],
+  weekDates: string[],
+  weekStart: string,
+  shifts: Shift[],
+  participants: Participant[],
+  otherCoachingActivities: OtherCoachingActivity[] = [],
+  onCallPhone?: string,
+  regionLabel = 'region',
+): boolean {
+  const calendarName = `${regionLabel} coach schedule`
+  const ics = buildRegionCoachWeekScheduleIcs(
+    coaches,
+    weekDates,
+    shifts,
+    participants,
+    otherCoachingActivities,
+    onCallPhone,
+    calendarName,
+  )
+  return downloadIcsFile(
+    ics,
+    `${safeFilename(regionLabel)}_all_coaches_${weekStart}_schedule.ics`,
+  )
 }
