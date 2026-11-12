@@ -279,7 +279,8 @@ function appendTimeCardSheets(wb: XLSX.WorkBook, bundle: TimeCardBundle): void {
       fitToWidth: 1,
       fitToHeight: 1,
     }
-    const sheetName = `Week ${card.weekEnding}`.slice(0, 31)
+    // Excel sheet names cannot contain : \ / ? * [ ]
+    const sheetName = `Week ${card.weekIndex} ${card.weekStart}`.slice(0, 31)
     XLSX.utils.book_append_sheet(wb, ws, sheetName)
   }
 }
